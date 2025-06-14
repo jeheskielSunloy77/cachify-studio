@@ -1,44 +1,44 @@
 ---
 stepsCompleted:
-  - step-01-init
-  - step-02-discovery
-  - step-03-success
-  - step-01b-continue
-  - step-04-journeys
-  - step-05-domain
-  - step-06-innovation
-  - step-07-project-type
-  - step-08-scoping
-  - step-09-functional
-  - step-10-nonfunctional
-  - step-11-polish
-  - step-12-complete
+ - step-01-init
+ - step-02-discovery
+ - step-03-success
+ - step-01b-continue
+ - step-04-journeys
+ - step-05-domain
+ - step-06-innovation
+ - step-07-project-type
+ - step-08-scoping
+ - step-09-functional
+ - step-10-nonfunctional
+ - step-11-polish
+ - step-12-complete
 inputDocuments:
-  - _bmad-output/brainstorming/brainstorming-session-2026-02-04.md
+ - _bmad-output/brainstorming/brainstorming-session-2026-02-04.md
 documentCounts:
-  briefCount: 0
-  researchCount: 0
-  brainstormingCount: 1
-  projectDocsCount: 0
+ briefCount: 0
+ researchCount: 0
+ brainstormingCount: 1
+ projectDocsCount: 0
 workflowType: prd
-project_name: cachify-studio2
+project_name: cachify-studio
 user_name: Jay
 date: 2026-02-04T22:22:36+07:00
 classification:
-  projectType: desktop_app
-  domain: general
-  complexity: low
-  projectContext: greenfield
+ projectType: desktop_app
+ domain: general
+ complexity: low
+ projectContext: greenfield
 ---
 
-# Product Requirements Document - cachify-studio2
+# Product Requirements Document - cachify-studio
 
 **Author:** Jay  
 **Date:** 2026-02-04T22:22:36+07:00
 
 ## Executive Summary
 
-**Product:** cachify-studio2 — a cross-platform (macOS/Windows/Linux) desktop cache client for Redis and Memcached.
+**Product:** cachify-studio — a cross-platform (macOS/Windows/Linux) desktop cache client for Redis and Memcached.
 
 **Target users:** Software engineers who debug local and remote caches frequently and need a safe, modern UI that works without relying on an external backend.
 
