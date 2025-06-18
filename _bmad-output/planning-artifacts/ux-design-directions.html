@@ -1,0 +1,1240 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>cachify-studio — UX Design Directions</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #fcfcfd;
+        --surface: #ffffff;
+        --surface-2: #f7f7f9;
+        --border: #e5e7eb;
+        --text: #111827;
+        --text-muted: #6b7280;
+        --accent: #e65d2e;
+        --accent-2: rgba(230, 93, 46, 0.18);
+        --focus: rgba(230, 93, 46, 0.55);
+        --danger: #b42318;
+        --warning: #d97706;
+        --success: #2e8b57;
+        --shadow: 0 10px 30px rgba(17, 24, 39, 0.08);
+        --radius: 14px;
+        --radius-sm: 10px;
+        --font-ui: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
+          "Segoe UI Emoji";
+        --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        --fs-12: 12px;
+        --fs-13: 13px;
+        --fs-14: 14px;
+        --lh: 1.45;
+        --space: 4px;
+        --row: 30px;
+      }
+      html[data-theme="dark"] {
+        --bg: #0b0f14;
+        --surface: #0f1620;
+        --surface-2: #121c28;
+        --border: #223041;
+        --text: #e5e7eb;
+        --text-muted: #9ca3af;
+        --accent: #ff7a45;
+        --accent-2: rgba(255, 122, 69, 0.16);
+        --focus: rgba(255, 122, 69, 0.62);
+        --shadow: 0 14px 46px rgba(0, 0, 0, 0.35);
+      }
+      html[data-density="compact"] {
+        --row: 30px;
+      }
+      html[data-density="comfort"] {
+        --row: 36px;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: var(--font-ui);
+        background: radial-gradient(1200px 700px at 15% 5%, rgba(230, 93, 46, 0.10), transparent 55%),
+          radial-gradient(900px 650px at 90% 0%, rgba(230, 93, 46, 0.06), transparent 52%),
+          var(--bg);
+        color: var(--text);
+        line-height: var(--lh);
+      }
+      a {
+        color: inherit;
+      }
+      .wrap {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 20px;
+      }
+      .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        backdrop-filter: blur(10px);
+        background: color-mix(in srgb, var(--bg) 78%, transparent);
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+      }
+      .topbar-inner {
+        max-width: 1240px;
+        margin: 0 auto;
+        padding: 14px 20px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .brand {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+      }
+      .brand h1 {
+        font-size: 14px;
+        margin: 0;
+        letter-spacing: 0.02em;
+        font-weight: 650;
+      }
+      .brand .sub {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        border-radius: 999px;
+        box-shadow: 0 1px 0 rgba(0, 0, 0, 0.03);
+        font-size: 12px;
+        color: var(--text);
+      }
+      .pill label {
+        color: var(--text-muted);
+      }
+      select,
+      button,
+      input[type="checkbox"] {
+        font: inherit;
+      }
+      select {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 10px;
+        padding: 6px 8px;
+        outline: none;
+      }
+      select:focus-visible {
+        box-shadow: 0 0 0 3px var(--focus);
+        border-color: color-mix(in srgb, var(--accent) 60%, var(--border));
+      }
+      button {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        color: var(--text);
+        border-radius: 10px;
+        padding: 8px 10px;
+        cursor: pointer;
+      }
+      button:hover {
+        background: color-mix(in srgb, var(--surface) 92%, var(--accent-2));
+      }
+      button:focus-visible {
+        outline: none;
+        box-shadow: 0 0 0 3px var(--focus);
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 320px 1fr;
+        gap: 16px;
+        align-items: start;
+        margin-top: 18px;
+      }
+      @media (max-width: 980px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .sidebar {
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 75%, transparent);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .side-head {
+        padding: 12px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .side-head .title {
+        font-weight: 650;
+        font-size: 13px;
+      }
+      .hint {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .nav {
+        padding: 10px;
+        display: grid;
+        gap: 8px;
+      }
+      .nav a {
+        text-decoration: none;
+        display: grid;
+        grid-template-columns: 20px 1fr;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 10px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        color: var(--text);
+        font-size: 13px;
+      }
+      .nav a:hover {
+        background: var(--surface-2);
+        border-color: color-mix(in srgb, var(--border) 70%, transparent);
+      }
+      .nav .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: var(--accent);
+        box-shadow: 0 0 0 4px var(--accent-2);
+      }
+      .content {
+        display: grid;
+        gap: 14px;
+      }
+      .intro {
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 78%, transparent);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 14px;
+      }
+      .intro h2 {
+        margin: 0 0 6px 0;
+        font-size: 14px;
+        font-weight: 650;
+      }
+      .intro p {
+        margin: 0;
+        font-size: 13px;
+        color: var(--text-muted);
+      }
+      .card {
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 80%, transparent);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }
+      .card-head {
+        padding: 12px 14px;
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      .card-head h3 {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 650;
+      }
+      .meta {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .mock {
+        padding: 12px;
+      }
+      .frame {
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 16px;
+        overflow: hidden;
+      }
+      .frame .chrome {
+        height: 42px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 0 12px;
+        background: linear-gradient(to bottom, color-mix(in srgb, var(--surface) 90%, var(--surface-2)), var(--surface));
+      }
+      .win-dots {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+      }
+      .win-dots i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        display: inline-block;
+        background: color-mix(in srgb, var(--border) 70%, transparent);
+      }
+      .win-title {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 9px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 85%, var(--surface-2));
+        font-size: 12px;
+        color: var(--text);
+      }
+      .chip .tag {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: var(--danger);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 22%, transparent);
+      }
+      .chip.safe .tag {
+        background: var(--success);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 20%, transparent);
+      }
+      .chip.staging .tag {
+        background: var(--warning);
+        box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 20%, transparent);
+      }
+      .shell {
+        display: grid;
+        grid-template-columns: 200px 1fr 420px;
+        min-height: 330px;
+      }
+      .rail {
+        border-right: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 92%, var(--surface-2));
+        padding: 10px;
+        display: grid;
+        grid-auto-rows: min-content;
+        gap: 10px;
+      }
+      .rail .logo {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .logo .app {
+        font-size: 12px;
+        font-weight: 650;
+        letter-spacing: 0.02em;
+      }
+      .navbtn {
+        display: grid;
+        grid-template-columns: 14px 1fr;
+        gap: 10px;
+        align-items: center;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid transparent;
+        font-size: 12px;
+        color: var(--text);
+      }
+      .navbtn.active {
+        border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+        background: color-mix(in srgb, var(--accent-2) 65%, var(--surface));
+      }
+      .navbtn i {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--text-muted) 35%, transparent);
+      }
+      .navbtn.active i {
+        background: var(--accent);
+        box-shadow: 0 0 0 4px var(--accent-2);
+      }
+      .main {
+        padding: 10px 12px;
+        display: grid;
+        grid-auto-rows: min-content;
+        gap: 10px;
+      }
+      .search {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 10px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+      }
+      .search .kbd {
+        font-family: var(--font-mono);
+        font-size: 12px;
+        color: var(--text-muted);
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 90%, var(--surface-2));
+        padding: 2px 6px;
+        border-radius: 8px;
+      }
+      .search .q {
+        flex: 1;
+        font-size: 13px;
+        color: var(--text);
+      }
+      .search .q span {
+        color: var(--text-muted);
+      }
+      .list {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+        background: var(--surface);
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 10px;
+        align-items: center;
+        height: var(--row);
+        padding: 0 10px;
+        border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+        font-size: 12px;
+      }
+      .row:last-child {
+        border-bottom: none;
+      }
+      .row .k {
+        font-family: var(--font-mono);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .row .ttl {
+        color: var(--text-muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .row.active {
+        background: color-mix(in srgb, var(--accent-2) 60%, var(--surface));
+      }
+      .inspector {
+        border-left: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 92%, var(--surface-2));
+        padding: 10px;
+        display: grid;
+        grid-template-rows: min-content min-content 1fr;
+        gap: 10px;
+      }
+      .inspector .head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+      }
+      .title2 {
+        font-size: 12px;
+        color: var(--text-muted);
+      }
+      .tabs {
+        display: inline-flex;
+        gap: 6px;
+        padding: 5px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        background: var(--surface);
+      }
+      .tab {
+        padding: 6px 10px;
+        border-radius: 999px;
+        font-size: 12px;
+        border: 1px solid transparent;
+        background: transparent;
+        cursor: default;
+      }
+      .tab.active {
+        border-color: color-mix(in srgb, var(--accent) 38%, var(--border));
+        background: color-mix(in srgb, var(--accent-2) 65%, var(--surface));
+        color: var(--text);
+      }
+      pre {
+        margin: 0;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        background: var(--surface);
+        padding: 10px;
+        font-family: var(--font-mono);
+        font-size: 12px;
+        line-height: 1.5;
+        overflow: hidden;
+        max-height: 190px;
+      }
+      .muted {
+        color: var(--text-muted);
+      }
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        color: var(--text-muted);
+        border: 1px dashed color-mix(in srgb, var(--border) 75%, transparent);
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: color-mix(in srgb, var(--surface) 85%, transparent);
+      }
+      .heat {
+        display: grid;
+        grid-template-columns: repeat(18, 1fr);
+        gap: 4px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        background: var(--surface);
+        border-radius: 14px;
+      }
+      .cell {
+        aspect-ratio: 1 / 1;
+        border-radius: 5px;
+        background: color-mix(in srgb, var(--border) 38%, transparent);
+      }
+      .cell.hot {
+        background: color-mix(in srgb, var(--accent) 70%, var(--border));
+      }
+      .cell.mid {
+        background: color-mix(in srgb, var(--accent) 38%, var(--border));
+      }
+      .callout {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        border: 1px solid var(--border);
+        background: color-mix(in srgb, var(--surface) 86%, var(--surface-2));
+        border-radius: 14px;
+        padding: 10px;
+        font-size: 12px;
+      }
+      .callout .left {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+      }
+      .callout strong {
+        font-weight: 650;
+      }
+      .compare {
+        display: none;
+        gap: 12px;
+      }
+      .compare.on {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+      }
+      @media (max-width: 980px) {
+        .compare.on {
+          grid-template-columns: 1fr;
+        }
+      }
+      .toast {
+        position: fixed;
+        bottom: 18px;
+        right: 18px;
+        z-index: 30;
+        background: color-mix(in srgb, var(--surface) 90%, var(--surface-2));
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px 12px;
+        box-shadow: var(--shadow);
+        font-size: 12px;
+        color: var(--text);
+        max-width: 360px;
+        display: none;
+      }
+      .toast.on {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="topbar">
+      <div class="topbar-inner">
+        <div class="brand">
+          <h1>cachify-studio</h1>
+          <div class="sub">Design direction mockups (Step 9)</div>
+        </div>
+        <div class="controls">
+          <div class="pill">
+            <label for="theme">Theme</label>
+            <select id="theme">
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+          <div class="pill">
+            <label for="density">Density</label>
+            <select id="density">
+              <option value="compact" selected>Compact</option>
+              <option value="comfort">Comfort</option>
+            </select>
+          </div>
+          <button id="toggleCompare" type="button">Compare</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <div class="grid">
+        <aside class="sidebar">
+          <div class="side-head">
+            <div class="title">Directions</div>
+            <div class="hint">Pick 1–2 favorites</div>
+          </div>
+          <nav class="nav" id="nav">
+            <a href="#d1"><span class="dot"></span><span>1. Calm Canvas</span></a>
+            <a href="#d2"><span class="dot"></span><span>2. Command-First</span></a>
+            <a href="#d3"><span class="dot"></span><span>3. Inspector-First</span></a>
+            <a href="#d4"><span class="dot"></span><span>4. TTL Heatmap Hero</span></a>
+            <a href="#d5"><span class="dot"></span><span>5. Playbooks Runner</span></a>
+            <a href="#d6"><span class="dot"></span><span>6. Prod Safe Shell</span></a>
+            <a href="#d7"><span class="dot"></span><span>7. Dense Key Table</span></a>
+            <a href="#d8"><span class="dot"></span><span>8. Zen Inspector</span></a>
+          </nav>
+        </aside>
+
+        <main class="content">
+          <section class="intro">
+            <h2>How to evaluate</h2>
+            <p>
+              Look for calm clarity under pressure: connection-first orientation, fast key discovery, and a trustworthy value
+              inspector with <span class="muted">Pretty (default)</span> ↔ <span class="muted">Raw</span> switching. Use
+              Compare to view two directions side-by-side.
+            </p>
+          </section>
+
+          <section class="compare" id="compare">
+            <div class="card">
+              <div class="card-head">
+                <h3>Left</h3>
+                <div class="meta">
+                  <select class="pick" data-target="left">
+                    <option value="d1">1. Calm Canvas</option>
+                    <option value="d2">2. Command-First</option>
+                    <option value="d3">3. Inspector-First</option>
+                    <option value="d4">4. TTL Heatmap Hero</option>
+                    <option value="d5">5. Playbooks Runner</option>
+                    <option value="d6">6. Prod Safe Shell</option>
+                    <option value="d7">7. Dense Key Table</option>
+                    <option value="d8">8. Zen Inspector</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mock" id="leftSlot"></div>
+            </div>
+            <div class="card">
+              <div class="card-head">
+                <h3>Right</h3>
+                <div class="meta">
+                  <select class="pick" data-target="right">
+                    <option value="d3">3. Inspector-First</option>
+                    <option value="d1">1. Calm Canvas</option>
+                    <option value="d2">2. Command-First</option>
+                    <option value="d4">4. TTL Heatmap Hero</option>
+                    <option value="d5">5. Playbooks Runner</option>
+                    <option value="d6">6. Prod Safe Shell</option>
+                    <option value="d7">7. Dense Key Table</option>
+                    <option value="d8">8. Zen Inspector</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mock" id="rightSlot"></div>
+            </div>
+          </section>
+
+          <section class="card" id="d1">
+            <div class="card-head">
+              <h3>1. Calm Canvas (Notion-like hierarchy)</h3>
+              <div class="meta">Stable rail • calm content canvas • inspector drawer</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Explorer — session:* — Pretty</div>
+                  <span class="chip staging"><span class="tag"></span>STAGING · Read-only</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 200px 1fr 380px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Cachify</div>
+                      <span class="badge">⌘K</span>
+                    </div>
+                    <div class="navbtn active"><i></i><span>Explorer</span></div>
+                    <div class="navbtn"><i></i><span>Dashboard</span></div>
+                    <div class="navbtn"><i></i><span>Playbooks</span></div>
+                    <div class="hint">Connections</div>
+                    <div class="list">
+                      <div class="row active"><div class="k">staging-redis</div><div class="ttl">TLS</div></div>
+                      <div class="row"><div class="k">local-redis</div><div class="ttl">127.0.0.1</div></div>
+                      <div class="row"><div class="k">prod-redis</div><div class="ttl">RO</div></div>
+                    </div>
+                  </div>
+                  <div class="main">
+                    <div class="search">
+                      <span class="kbd">⌘K</span>
+                      <div class="q">Search keys… <span>session: user: 1842</span></div>
+                      <span class="badge">fuzzy</span>
+                    </div>
+                    <div class="callout">
+                      <div class="left">
+                        <strong>Decode any cache value into meaning.</strong>
+                        <span class="muted">Pretty by default • Raw always available • Redaction on</span>
+                      </div>
+                      <span class="chip safe"><span class="tag"></span>Screen-share safe</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">session:1842</div><div class="ttl">TTL 19m</div></div>
+                      <div class="row"><div class="k">session:1842:flags</div><div class="ttl">TTL 2h</div></div>
+                      <div class="row"><div class="k">session:1842:cart</div><div class="ttl">TTL 6m</div></div>
+                      <div class="row"><div class="k">session:1842:jwt</div><div class="ttl">redacted</div></div>
+                    </div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Key</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">session:1842</div>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <div class="hint">type: hash · size: 18kb · ttl: 19m · redaction: on</div>
+                    <pre>{
+  "userId": 1842,
+  "roles": ["member"],
+  "token": "[REDACTED_JWT]",
+  "cart": { "items": 3, "total": 42.95 },
+  "flags": { "beta": true }
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d2">
+            <div class="card-head">
+              <h3>2. Command-First (one surface, one brain)</h3>
+              <div class="meta">Full app = command surface • results below • minimal rail</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">⌘K — Connect / Search / Inspect</div>
+                  <span class="chip safe"><span class="tag"></span>LOCAL · Safe</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 80px 1fr 420px">
+                  <div class="rail">
+                    <div class="navbtn active" title="Explorer"><i></i><span>Ex</span></div>
+                    <div class="navbtn" title="Dash"><i></i><span>Da</span></div>
+                    <div class="navbtn" title="Playbooks"><i></i><span>Pb</span></div>
+                  </div>
+                  <div class="main">
+                    <div class="search" style="border-color: color-mix(in srgb, var(--accent) 42%, var(--border))">
+                      <span class="kbd">⌘K</span>
+                      <div class="q">staging-redis <span>→</span> key: <span>session:1842</span></div>
+                      <span class="badge">Enter</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">Action: Inspect key</div><div class="ttl">Pretty</div></div>
+                      <div class="row"><div class="k">Action: Search keys “session:*”</div><div class="ttl">fast</div></div>
+                      <div class="row"><div class="k">Action: Switch connection</div><div class="ttl">connections</div></div>
+                      <div class="row"><div class="k">Action: Copy redacted snippet</div><div class="ttl">safe</div></div>
+                    </div>
+                    <div class="hint">The rail exists, but you can live in ⌘K.</div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Inspector</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">session:1842</div>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <div class="hint">decode: json · redaction: on · caps: 1mb</div>
+                    <pre>{
+  "traceId": "3c8b…",
+  "cache": { "hit": true, "ttlSeconds": 1140 },
+  "payload": { "email": "[REDACTED_EMAIL]" }
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d3">
+            <div class="card-head">
+              <h3>3. Inspector-First (Postman-inspired viewer)</h3>
+              <div class="meta">Key list + inspector dominate • metadata always visible</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Inspector — Pretty / Raw</div>
+                  <span class="chip"><span class="tag"></span>PROD · Read-only</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 230px 1fr 0px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Explorer</div>
+                      <span class="badge">RO</span>
+                    </div>
+                    <div class="search">
+                      <div class="q">Connection: <span>prod-redis</span></div>
+                    </div>
+                    <div class="search">
+                      <div class="q">Key search… <span>user:1842</span></div>
+                      <span class="badge">↵</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">user:1842</div><div class="ttl">TTL 3m</div></div>
+                      <div class="row"><div class="k">user:1842:profile</div><div class="ttl">TTL 1h</div></div>
+                      <div class="row"><div class="k">user:1842:flags</div><div class="ttl">TTL 9m</div></div>
+                      <div class="row"><div class="k">user:1842:jwt</div><div class="ttl">redacted</div></div>
+                    </div>
+                  </div>
+                  <div class="main">
+                    <div class="callout">
+                      <div class="left">
+                        <strong>Key metadata</strong>
+                        <span class="muted">type: string · size: 124kb · ttl: 3m · decode: json</span>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <pre>{
+  "userId": 1842,
+  "name": "Sam",
+  "permissions": ["read"],
+  "token": "[REDACTED_JWT]",
+  "lastSeen": "2026-02-08T08:12:14Z"
+}</pre>
+                    <div class="callout">
+                      <div class="left">
+                        <strong>Copilot recovery</strong>
+                        <span class="muted">If decoding fails, suggest next view or export safely.</span>
+                      </div>
+                      <span class="badge">Explain · Retry · Export</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d4">
+            <div class="card-head">
+              <h3>4. TTL Heatmap Hero (Dashboard-first orientation)</h3>
+              <div class="meta">Heatmap as a calm hero visualization • click-to-drill</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Dashboard — TTL health</div>
+                  <span class="chip staging"><span class="tag"></span>STAGING · Read-only</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 200px 1fr 420px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Cachify</div>
+                      <span class="badge">⌘K</span>
+                    </div>
+                    <div class="navbtn"><i></i><span>Explorer</span></div>
+                    <div class="navbtn active"><i></i><span>Dashboard</span></div>
+                    <div class="navbtn"><i></i><span>Playbooks</span></div>
+                    <div class="hint">Connection</div>
+                    <div class="list">
+                      <div class="row active"><div class="k">staging-redis</div><div class="ttl">TLS</div></div>
+                      <div class="row"><div class="k">prod-redis</div><div class="ttl">RO</div></div>
+                    </div>
+                  </div>
+                  <div class="main">
+                    <div class="callout">
+                      <div class="left">
+                        <strong>TTL heatmap</strong>
+                        <span class="muted">Spot synchronized expiries (“storms”) quickly.</span>
+                      </div>
+                      <span class="badge">prefix: session:*</span>
+                    </div>
+                    <div class="heat" aria-label="TTL heatmap mock">
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell hot"></div><div class="cell mid"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell mid"></div><div class="cell hot"></div><div class="cell hot"></div><div class="cell mid"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell hot"></div><div class="cell mid"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell mid"></div><div class="cell hot"></div><div class="cell hot"></div><div class="cell mid"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                      <div class="cell"></div><div class="cell"></div><div class="cell"></div><div class="cell mid"></div><div class="cell"></div><div class="cell"></div>
+                    </div>
+                    <div class="hint">Click a hot cell → drill into affected keys (Explorer) with the same prefix filter.</div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Storm panel</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">session:*</div>
+                      </div>
+                      <span class="badge">Suggest playbook</span>
+                    </div>
+                    <div class="hint">Potential stampede risk in next 5–10m</div>
+                    <pre>{
+  "signal": "ttl-cliff",
+  "peakBucket": "5m",
+  "suggestedNext": "Add jitter to TTLs",
+  "safeActions": ["export evidence", "open key list"]
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d5">
+            <div class="card-head">
+              <h3>5. Playbooks Runner (actions as safe recipes)</h3>
+              <div class="meta">Collections/playbooks with outputs • redaction + provenance</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Playbooks — Run bundle</div>
+                  <span class="chip staging"><span class="tag"></span>STAGING · Read-only</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 220px 1fr 420px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Playbooks</div>
+                      <span class="badge">safe</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">Is cache the culprit?</div><div class="ttl">RO</div></div>
+                      <div class="row"><div class="k">Evictions check</div><div class="ttl">RO</div></div>
+                      <div class="row"><div class="k">Fetch + decode key</div><div class="ttl">RO</div></div>
+                      <div class="row"><div class="k">Break-glass mutation</div><div class="ttl">LOCK</div></div>
+                    </div>
+                    <div class="hint">Playbooks are shareable artifacts.</div>
+                  </div>
+                  <div class="main">
+                    <div class="callout">
+                      <div class="left">
+                        <strong>Is cache the culprit?</strong>
+                        <span class="muted">Read-only playbook • produces a shareable bundle</span>
+                      </div>
+                      <span class="badge">Run</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">1) Preflight connection</div><div class="ttl">ok</div></div>
+                      <div class="row"><div class="k">2) Fetch stats</div><div class="ttl">ok</div></div>
+                      <div class="row"><div class="k">3) Sample hot prefix</div><div class="ttl">ok</div></div>
+                      <div class="row"><div class="k">4) Generate evidence</div><div class="ttl">ready</div></div>
+                    </div>
+                    <div class="hint">Copilot voice: short diagnosis + safe next actions.</div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Output</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">run-2026-02-08</div>
+                      </div>
+                      <span class="badge">Export MD</span>
+                    </div>
+                    <pre>{
+  "diagnosis": "Cache likely contributing (hit-rate drop + ttl-cliff)",
+  "confidence": 0.74,
+  "evidence": [
+    "ttl heatmap storm @ session:*",
+    "spike in misses",
+    "evictions stable"
+  ],
+  "safeNext": ["export bundle", "open explorer filtered"]
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d6">
+            <div class="card-head">
+              <h3>6. Prod Safe Shell (state is never subtle)</h3>
+              <div class="meta">Prod stripe • read-only lock • unlock is loud & deliberate</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome" style="background: linear-gradient(to bottom, color-mix(in srgb, var(--danger) 16%, var(--surface)), var(--surface));">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Explorer — PROD</div>
+                  <span class="chip"><span class="tag"></span>PROD · Read-only · Locked</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 200px 1fr 420px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Cachify</div>
+                      <span class="badge">PROD</span>
+                    </div>
+                    <div class="navbtn active"><i></i><span>Explorer</span></div>
+                    <div class="navbtn"><i></i><span>Dashboard</span></div>
+                    <div class="navbtn"><i></i><span>Playbooks</span></div>
+                    <div class="callout" style="border-color: color-mix(in srgb, var(--danger) 40%, var(--border));">
+                      <div class="left">
+                        <strong>Read-only enforced</strong>
+                        <span class="muted">Mutations require unlock (time-boxed)</span>
+                      </div>
+                      <span class="badge">Unlock…</span>
+                    </div>
+                  </div>
+                  <div class="main">
+                    <div class="search">
+                      <span class="kbd">⌘K</span>
+                      <div class="q">Search keys… <span>orders:*</span></div>
+                      <span class="badge">PROD</span>
+                    </div>
+                    <div class="list">
+                      <div class="row active"><div class="k">orders:pending</div><div class="ttl">TTL 2m</div></div>
+                      <div class="row"><div class="k">orders:queue</div><div class="ttl">TTL 10m</div></div>
+                      <div class="row"><div class="k">orders:last-failed</div><div class="ttl">TTL 1h</div></div>
+                      <div class="row"><div class="k">orders:token</div><div class="ttl">redacted</div></div>
+                    </div>
+                    <div class="hint">The product stays calm, but prod is unmistakable.</div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Value</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">orders:pending</div>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <div class="hint">type: list · size: 2.1mb · cap hit: partial preview</div>
+                    <pre>{
+  "preview": "partial (cap reached)",
+  "safeNext": ["export raw", "narrow fetch", "copy metadata"],
+  "reason": "decoded output exceeds 1mb cap"
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d7">
+            <div class="card-head">
+              <h3>7. Dense Key Table (scan + sort + filter)</h3>
+              <div class="meta">Columnar scanning • fast metadata • keyboard selection</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Explorer — table</div>
+                  <span class="chip safe"><span class="tag"></span>LOCAL · Safe</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 200px 1fr 420px">
+                  <div class="rail">
+                    <div class="logo">
+                      <div class="app">Explorer</div>
+                      <span class="badge">Compact</span>
+                    </div>
+                    <div class="navbtn active"><i></i><span>Keys</span></div>
+                    <div class="navbtn"><i></i><span>Saved</span></div>
+                    <div class="navbtn"><i></i><span>Recent</span></div>
+                    <div class="hint">Connection</div>
+                    <div class="list">
+                      <div class="row active"><div class="k">local-redis</div><div class="ttl">127.0.0.1</div></div>
+                      <div class="row"><div class="k">staging-redis</div><div class="ttl">TLS</div></div>
+                    </div>
+                  </div>
+                  <div class="main">
+                    <div class="search">
+                      <span class="kbd">⌘K</span>
+                      <div class="q">Filter… <span>prefix=session:</span></div>
+                      <span class="badge">Sort TTL</span>
+                    </div>
+                    <div class="list" style="border-radius: 14px">
+                      <div class="row" style="background: var(--surface-2); font-weight: 650">
+                        <div class="k" style="font-family: var(--font-ui)">Key</div>
+                        <div class="ttl">TTL</div>
+                      </div>
+                      <div class="row active"><div class="k">session:1842</div><div class="ttl">19m</div></div>
+                      <div class="row"><div class="k">session:119</div><div class="ttl">8m</div></div>
+                      <div class="row"><div class="k">session:777</div><div class="ttl">2m</div></div>
+                      <div class="row"><div class="k">session:991</div><div class="ttl">—</div></div>
+                      <div class="row"><div class="k">session:token:*</div><div class="ttl">redacted</div></div>
+                    </div>
+                    <div class="hint">Great for scanning; must still preserve the “meaning in seconds” promise.</div>
+                  </div>
+                  <div class="inspector">
+                    <div class="head">
+                      <div>
+                        <div class="title2">Inspector</div>
+                        <div class="k" style="font-family: var(--font-mono); font-size: 12px">session:1842</div>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <div class="hint">type: hash · ttl: 19m · size: 18kb</div>
+                    <pre>{
+  "cart": { "items": 3 },
+  "token": "[REDACTED_JWT]",
+  "beta": true
+}</pre>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card" id="d8">
+            <div class="card-head">
+              <h3>8. Zen Inspector (distraction-free understanding)</h3>
+              <div class="meta">Focus on one value • minimal surrounding UI • fast switching</div>
+            </div>
+            <div class="mock">
+              <div class="frame">
+                <div class="chrome">
+                  <div class="win-dots"><i></i><i></i><i></i></div>
+                  <div class="win-title">Zen — value understanding</div>
+                  <span class="chip safe"><span class="tag"></span>STAGING · Safe</span>
+                </div>
+                <div class="shell" style="grid-template-columns: 0px 1fr 0px">
+                  <div></div>
+                  <div class="main" style="padding: 18px 18px 16px">
+                    <div class="callout">
+                      <div class="left">
+                        <strong class="k" style="font-family: var(--font-mono)">session:1842</strong>
+                        <span class="muted">type: hash · ttl: 19m · decode: json · redaction: on</span>
+                      </div>
+                      <div class="tabs"><span class="tab active">Pretty</span><span class="tab">Raw</span></div>
+                    </div>
+                    <pre style="max-height: 240px">{
+  "userId": 1842,
+  "roles": ["member"],
+  "token": "[REDACTED_JWT]",
+  "notes": "Zen mode hides everything not needed to understand."
+}</pre>
+                    <div class="callout">
+                      <div class="left">
+                        <strong>Next actions</strong>
+                        <span class="muted">Copy safe snippet • Export bundle • Return to Explorer</span>
+                      </div>
+                      <span class="badge">Copy</span>
+                    </div>
+                  </div>
+                  <div></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">Compare mode is on. Use the dropdowns to swap directions.</div>
+
+    <script>
+      const themeSel = document.getElementById("theme");
+      const densitySel = document.getElementById("density");
+      const compareEl = document.getElementById("compare");
+      const toast = document.getElementById("toast");
+      const toggleCompareBtn = document.getElementById("toggleCompare");
+      const leftSlot = document.getElementById("leftSlot");
+      const rightSlot = document.getElementById("rightSlot");
+
+      function systemPrefersDark() {
+        return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      }
+
+      function applyTheme(value) {
+        if (value === "system") {
+          document.documentElement.dataset.theme = systemPrefersDark() ? "dark" : "light";
+        } else {
+          document.documentElement.dataset.theme = value;
+        }
+      }
+
+      function applyDensity(value) {
+        document.documentElement.dataset.density = value;
+      }
+
+      function cloneDirection(id) {
+        const src = document.getElementById(id);
+        if (!src) return document.createTextNode("Missing direction: " + id);
+        const clone = src.querySelector(".mock").cloneNode(true);
+        return clone;
+      }
+
+      function renderCompare() {
+        const leftPick = document.querySelector('select.pick[data-target="left"]');
+        const rightPick = document.querySelector('select.pick[data-target="right"]');
+        leftSlot.innerHTML = "";
+        rightSlot.innerHTML = "";
+        leftSlot.appendChild(cloneDirection(leftPick.value));
+        rightSlot.appendChild(cloneDirection(rightPick.value));
+      }
+
+      themeSel.addEventListener("change", () => applyTheme(themeSel.value));
+      densitySel.addEventListener("change", () => applyDensity(densitySel.value));
+      toggleCompareBtn.addEventListener("click", () => {
+        const on = !compareEl.classList.contains("on");
+        compareEl.classList.toggle("on", on);
+        toast.classList.toggle("on", on);
+        if (on) renderCompare();
+      });
+
+      document.querySelectorAll("select.pick").forEach((sel) => sel.addEventListener("change", renderCompare));
+
+      // System theme updates live if user keeps "system"
+      if (window.matchMedia) {
+        window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+          if (themeSel.value === "system") applyTheme("system");
+        });
+      }
+
+      // Initialize
+      applyTheme("system");
+      applyDensity(densitySel.value);
+    </script>
+  </body>
+</html>
