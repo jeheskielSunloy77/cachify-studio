@@ -1,0 +1,82 @@
+# generated: 2026-02-08
+# project: cachify-studio
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /home/jay/Programming/cachify-studio/_bmad-output/implementation-artifacts
+#
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: '2026-02-08'
+project: cachify-studio
+project_key: NOKEY
+tracking_system: file-system
+story_location: /home/jay/Programming/cachify-studio/_bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-project-bootstrap-forge-vite-react-typed-ipc: backlog
+  1-2-connection-profiles-crud-local-persistence-metadata-only: backlog
+  1-3-secrets-storage-keychain-backed-credentials-with-prompt-every-time-option: backlog
+  1-4-connect-to-redis-memcached-with-error-reporting-and-connection-status: backlog
+  1-5-trust-safety-chip-environment-label-read-only-default-unlock-indicator: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-redis-keyspace-explorer-prefix-navigation-streaming-search: backlog
+  2-2-key-metadata-panel-type-ttl-where-available: backlog
+  2-3-inspect-redis-strings-hashes-lists-sets-zsets-streams-read-only: backlog
+  2-4-memcached-get-by-key-stats-read-only: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-redaction-by-default-previews-with-deliberate-safe-reveal: backlog
+  3-2-pretty-raw-viewer-modes-for-inspectable-values: backlog
+  3-3-decode-pipeline-json-pretty-and-extensible-pipeline-model: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-safe-copy-to-clipboard-redacted-safe-default: backlog
+  4-2-export-minimal-markdown-bundle-single-file-with-context: backlog
+  4-3-saved-searches-and-quick-recall-with-optional-scoping: backlog
+  4-4-recents-reopen-recently-inspected-keys-values: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-unlock-mutations-flow-locked-mode-enforcement: backlog
+  5-2-redis-key-level-mutations-type-aware-with-feedback: backlog
+  5-3-delete-redis-key-guarded-with-success-failure-feedback: backlog
+  5-4-memcached-set-only-when-unlocked: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-tray-menu-quick-open-recent-connections-safety-indicator: backlog
+  6-2-global-shortcut-focuses-primary-search: backlog
+  6-3-update-awareness-check-online-prompt-to-install: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1-preferences-persistence-local-offline-first: backlog
+  7-2-saved-searches-persistence-local: backlog
+  7-3-export-artifacts-index-local-storage: backlog
+  7-4-no-fetched-cache-values-persisted-by-default-enforced: backlog
+  epic-7-retrospective: optional
