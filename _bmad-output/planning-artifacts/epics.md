@@ -222,6 +222,11 @@ So that I can begin implementing features with the correct security boundaries f
 **When** I inspect the code structure
 **Then** renderer/preload/main are separated and renderer cannot access Node APIs directly
 
+**Given** the preload IPC bridge is misconfigured or unavailable
+**When** the renderer attempts the sample IPC call
+**Then** the renderer receives a clear error response (not a hang)
+**And** the app remains usable (no crash / frozen UI)
+
 ### Story 1.2: Connection Profiles: CRUD + Local Persistence (metadata only)
 
 As a cache user,
@@ -239,6 +244,14 @@ So that I can manage many environments and quickly pick the right one.
 **When** I delete it
 **Then** it is removed from local storage and no longer selectable
 
+**Given** I attempt to save a profile with invalid or incomplete fields (e.g., missing host/port)
+**When** I try to save
+**Then** the app prevents saving and shows field-level validation errors
+
+**Given** local persistence fails (e.g., disk error)
+**When** I try to create, update, or delete a profile
+**Then** the app shows an actionable error and does not corrupt existing profiles
+
 ### Story 1.3: Secrets Storage: Keychain-backed credentials with “prompt every time” option
 
 As a cache user,
@@ -254,6 +267,14 @@ So that my secrets are safe and I control persistence.
 **Given** a profile set to “prompt every time”
 **When** I connect
 **Then** I am prompted for credentials and they are not persisted after the session
+
+**Given** the OS credential store is unavailable or disallows secure storage
+**When** I try to enable “save credentials”
+**Then** the app prevents saving secrets and clearly explains the limitation (falling back to prompt-only behavior)
+
+**Given** saving to the OS credential store fails
+**When** I attempt to save credentials
+**Then** the app reports the failure and does not store credentials in any plaintext/local file as a fallback
 
 ### Story 1.4: Connect to Redis/Memcached with error reporting and connection status
 
@@ -286,6 +307,11 @@ So that I avoid wrong-environment mistakes.
 **Given** a profile marked as production
 **When** I connect
 **Then** mutations are disabled by default and the UI clearly indicates read-only
+
+**Given** the environment label/state cannot be determined confidently
+**When** I connect
+**Then** the Trust & Safety chip shows an explicit “Unknown”/“Unverified” state
+**And** the app defaults to the safest posture (mutations disabled)
 
 ## Epic 2: Explore Redis & Memcached Data (Keys, Search, Inspect)
 
@@ -467,6 +493,14 @@ So that I avoid accidental writes and understand risk clearly.
 **When** I confirm intent
 **Then** mutations become enabled and the UI shows an always-visible unlocked indicator
 
+**Given** I start the unlock flow
+**When** I cancel or fail confirmation
+**Then** mutations remain locked and the UI continues to indicate read-only/locked mode
+
+**Given** mutations are unlocked
+**When** the unlock duration expires or I explicitly re-lock
+**Then** mutations return to locked mode and mutation actions are blocked again
+
 ### Story 5.2: Redis key-level mutations (type-aware) with feedback
 
 As a cache user,
@@ -491,6 +525,14 @@ So that I can remove bad data intentionally.
 **When** I delete a key and confirm
 **Then** the key is removed and the UI updates the explorer list
 
+**Given** mutations are unlocked
+**When** I attempt to delete a key that no longer exists
+**Then** the app shows a “not found” (or equivalent) result and keeps the UI state consistent
+
+**Given** mutations are unlocked
+**When** the delete operation fails (e.g., server error)
+**Then** the app shows an actionable error and does not incorrectly remove the key from the UI
+
 ### Story 5.4: Memcached set (only when unlocked)
 
 As a cache user,
@@ -502,6 +544,14 @@ So that I can validate fixes or adjust cached values intentionally.
 **Given** I am connected to Memcached and mutations are unlocked
 **When** I set a value by key
 **Then** the operation completes with clear feedback
+
+**Given** mutations are locked
+**When** I attempt to set a Memcached value
+**Then** the app blocks the action and indicates that unlocking is required
+
+**Given** I am connected to Memcached and mutations are unlocked
+**When** the set operation fails (e.g., timeout or server error)
+**Then** the app shows an actionable error and does not claim the value was updated
 
 ## Epic 6: Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
 
