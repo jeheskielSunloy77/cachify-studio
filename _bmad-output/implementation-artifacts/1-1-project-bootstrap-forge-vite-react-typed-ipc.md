@@ -1,6 +1,6 @@
 # Story 1.1: Project Bootstrap (Forge + Vite + React + Typed IPC)
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -33,22 +33,22 @@ so that I can begin implementing features with the correct security boundaries f
 
 ## Tasks / Subtasks
 
-- [ ] Scaffold Electron Forge app using `vite-typescript` template
-  - [ ] Verify `npm run start` (or Forge-equivalent) launches without errors
-- [ ] Add React to the Vite renderer build
-  - [ ] Install `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
-  - [ ] Render a minimal React app in the main window
-- [ ] Establish typed IPC contract + validation (single contract module)
-  - [ ] Define `ipc.contract.ts` with channel names + request/response Zod schemas
-  - [ ] Implement main handler with `ipcMain.handle()` returning stable envelopes
-  - [ ] Implement preload `contextBridge` API exposing only the typed endpoints
-  - [ ] Implement renderer client wrapper that calls `ipcRenderer.invoke()` via preload
-- [ ] Implement sample IPC endpoint used by the renderer UI
-  - [ ] “Ping”/“getAppInfo” style endpoint with a deterministic response payload
-  - [ ] UI button triggers call and renders success + error states
-- [ ] Guardrail: ensure security boundaries are enforced
-  - [ ] Confirm renderer cannot access Node APIs (no `nodeIntegration`; use preload only)
-  - [ ] Confirm failure modes return `{ ok: false, error }` and do not crash/hang
+- [x] Scaffold Electron Forge app using `vite-typescript` template
+  - [x] Verify `npm run start` (or Forge-equivalent) launches without errors
+- [x] Add React to the Vite renderer build
+  - [x] Install `react`, `react-dom`, `@types/react`, `@types/react-dom`, `@vitejs/plugin-react`
+  - [x] Render a minimal React app in the main window
+- [x] Establish typed IPC contract + validation (single contract module)
+  - [x] Define `ipc.contract.ts` with channel names + request/response Zod schemas
+  - [x] Implement main handler with `ipcMain.handle()` returning stable envelopes
+  - [x] Implement preload `contextBridge` API exposing only the typed endpoints
+  - [x] Implement renderer client wrapper that calls `ipcRenderer.invoke()` via preload
+- [x] Implement sample IPC endpoint used by the renderer UI
+  - [x] “Ping”/“getAppInfo” style endpoint with a deterministic response payload
+  - [x] UI button triggers call and renders success + error states
+- [x] Guardrail: ensure security boundaries are enforced
+  - [x] Confirm renderer cannot access Node APIs (no `nodeIntegration`; use preload only)
+  - [x] Confirm failure modes return `{ ok: false, error }` and do not crash/hang
 
 ## Dev Notes
 
@@ -171,8 +171,8 @@ so that I can begin implementing features with the correct security boundaries f
 
 ## Story Completion Status
 
-- Status: **ready-for-dev**
-- Completion note: Ultimate context engine analysis completed for Story 1.1 (bootstrap + typed IPC guardrails).
+- Status: **done**
+- Completion note: Implemented Forge + Vite + React bootstrap with typed IPC contract, envelope validation, preload-only bridge, and smoke/package validation; applied senior code-review fixes and revalidated.
 
 ## Dev Agent Record
 
@@ -181,13 +181,71 @@ so that I can begin implementing features with the correct security boundaries f
 GPT-5.2 (Codex CLI)
 
 ### Debug Log References
+- `npm run start` (dev launch smoke test; passed)
+- `npm run lint` (passed)
+- `npm test` (5 tests passed)
+- `npm run package` (passed)
 
 ### Completion Notes List
 
- - Sprint-status epic 1 moved to `in-progress` on first story context creation
- - “Latest” library versions resolved via `npm view` on 2026-02-08 (see Library / Framework Requirements)
+- Scaffolded Electron Forge `vite-typescript` app and merged generated project into repo root.
+- Added React renderer entrypoint and minimal IPC demo UI (`Get App Info` button + envelope output).
+- Implemented typed IPC contract (`Zod` schemas) and envelope validation in main + preload + renderer client.
+- Enforced renderer security boundary (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`, preload-only bridge).
+- Added unit tests for error normalization and renderer fallback when preload bridge is unavailable.
+- Applied code-review fixes:
+  - structured-clone-safe IPC error detail serialization
+  - renderer IPC timeout fallback for hung/misconfigured bridge
+  - `finally`-guarded renderer loading state reset
+- Validated with `npm run lint`, `npm test`, `npm run start`, and `npm run package`.
 
 ### File List
 
- - `_bmad-output/implementation-artifacts/1-1-project-bootstrap-forge-vite-react-typed-ipc.md` (this story context)
- - `_bmad-output/implementation-artifacts/sprint-status.yaml` (status tracking update)
+- `.eslintrc.json`
+- `.gitignore`
+- `forge.config.ts`
+- `forge.env.d.ts`
+- `index.html`
+- `package.json`
+- `package-lock.json`
+- `tsconfig.json`
+- `vite.main.config.ts`
+- `vite.preload.config.ts`
+- `vite.renderer.config.mts`
+- `src/main/index.ts`
+- `src/main/ipc/ipc.contract.ts`
+- `src/main/ipc/errors.ts`
+- `src/main/ipc/errors.test.ts`
+- `src/main/ipc/handlers.ts`
+- `src/preload/index.ts`
+- `src/renderer/App.tsx`
+- `src/renderer/global.d.ts`
+- `src/renderer/ipc/client.ts`
+- `src/renderer/ipc/client.test.ts`
+- `src/renderer/main.tsx`
+- `src/renderer/styles.css`
+- `_bmad-output/implementation-artifacts/1-1-project-bootstrap-forge-vite-react-typed-ipc.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+
+### Senior Developer Review (AI)
+
+- Date: 2026-02-08
+- Reviewer: Jay (AI-assisted)
+- Outcome: Changes requested and fixed in same review cycle
+
+Resolved findings:
+- HIGH: `src/main/ipc/errors.ts` returned non-structured-clone-safe `details` for unknown errors.
+  - Fix: Added defensive serialization for objects/arrays/functions/symbols/bigint/circular references.
+  - Validation: `src/main/ipc/errors.test.ts` includes non-clone-safe payload coverage.
+- HIGH: renderer IPC request could hang indefinitely if preload bridge invocation never resolves.
+  - Fix: Added timeout envelope fallback (`IPC_TIMEOUT`) in `src/renderer/ipc/client.ts`.
+  - Validation: `src/renderer/ipc/client.test.ts` includes hanging-call timeout scenario.
+- MEDIUM: Dev Agent Record File List omitted `src/main/ipc/handlers.ts`.
+  - Fix: Added missing file to File List.
+- LOW: loading state reset in `src/renderer/App.tsx` relied on happy path only.
+  - Fix: Wrapped request handling in `try/finally`.
+
+## Change Log
+
+- 2026-02-08: Completed Story 1.1 implementation, added typed IPC demo and tests, and moved story to review.
+- 2026-02-08: Completed senior code review, fixed all HIGH/MEDIUM findings, and moved story to done.
