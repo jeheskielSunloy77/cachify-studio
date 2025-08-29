@@ -1,14 +1,14 @@
 ---
 stepsCompleted:
-- step-01-validate-prerequisites
-- step-02-design-epics
-- step-03-create-stories
-- step-04-final-validation
+  - step-01-validate-prerequisites
+  - step-02-design-epics
+  - step-03-create-stories
+  - step-04-final-validation
 inputDocuments:
-- _bmad-output/planning-artifacts/prd.md
-- _bmad-output/planning-artifacts/architecture.md
-- _bmad-output/planning-artifacts/ux-design-specification.md
-- _bmad-output/planning-artifacts/ux-design-directions.html
+  - _bmad-output/planning-artifacts/prd.md
+  - _bmad-output/planning-artifacts/architecture.md
+  - _bmad-output/planning-artifacts/ux-design-specification.md
+  - _bmad-output/planning-artifacts/ux-design-directions.html
 ---
 
 # cachify-studio - Epic Breakdown
@@ -21,21 +21,20 @@ This document provides the complete epic and story breakdown for cachify-studio,
 
 ### Functional Requirements
 
-```text
 FR1: Users can create, view, edit, and delete connection profiles.
 FR2: Users can tag, favorite, and search connection profiles.
 FR3: Users can connect to a Redis instance using a selected profile.
 FR4: Users can connect to a Memcached instance using a selected profile.
 FR5: Users can authenticate to Redis using password-based authentication.
 FR6: Users can configure and use TLS for Redis connections (where supported by the target).
-FR7: Users can choose whether to save credentials for a profile or prompt each time.
-FR8: Saved credentials are stored in OS keychain/credential store, not in plaintext config.
-FR9: Users can choose from common Redis auth patterns (password, ACL username+password) for a profile.
-FR10: Users can optionally configure a custom CA certificate for TLS validation.
-FR11: Users can view connection status and error details when a connection attempt fails.
-FR12: The app provides an always-visible environment label/state for the active connection (e.g., local/staging/prod).
-FR13: Production connections default to enforced read-only mode.
-FR14: Users can explicitly unlock mutations for a connection via a deliberate flow.
+FR7: Users can choose whether to save credentials for a profile or be prompted each session.
+FR8: Users can disconnect and switch between connections without restarting the app.
+FR9: Users can view connection status and last connection error for the active connection.
+FR10: Users can assign an environment label (e.g., local/staging/prod) to each connection profile.
+FR11: Users can see the active connection’s environment clearly at all times.
+FR12: The app enforces read-only mode by default for profiles labeled as production.
+FR13: Users can explicitly enter an “unlocked mutations” mode for a connection.
+FR14: Users can exit unlocked mutations mode and return to read-only mode.
 FR15: The app clearly indicates when mutations are enabled for the active connection.
 FR16: Users can browse Redis keys using prefix/tree navigation.
 FR17: Users can search Redis keys by substring/pattern (within defined limits).
@@ -74,11 +73,9 @@ FR49: The app stores exported artifacts locally.
 FR50: The app does not persist fetched cache values by default.
 FR51: When online, the app can check for available updates and notify the user.
 FR52: The user can initiate installing an update from the prompt (handoff to the platform-appropriate install flow).
-```
 
 ### NonFunctional Requirements
 
-```text
 NFR1: App launch to usable UI is **≤ 2 seconds** on typical developer hardware.
 NFR2: Connect to first data visible is **≤ 3 seconds** for local/dev targets and **≤ 8 seconds** for remote targets (typical networks).
 NFR3: Key search returns first results in **≤ 500 ms** for typical keyspaces; for large scans, results stream progressively with a visible “search in progress” state.
@@ -97,550 +94,728 @@ NFR15: Interactive elements have clear focus states and meet reasonable contrast
 NFR16: Default value preview limit is **1 MB** decoded output (with a clear “too large to preview safely” state beyond this).
 NFR17: Default structured render depth limit is **20 levels** (or equivalent) before collapsing/truncating with user-visible indicators.
 NFR18: A user can always choose an “export raw/partial” path when limits are hit.
-```
 
 ### Additional Requirements
 
-- Use the selected starter stack: Electron Forge `vite-typescript` + TypeScript, with React in the renderer via Vite React plugin.
-- Enforce process boundaries: renderer UI only, preload is the minimal typed bridge, main owns IO/network/secrets.
-- Store connection secrets in OS credential store/keychain via Electron (`safeStorage`); on Linux, disable “save secret” when `safeStorage` backend is `basic_text`.
-- Persist app state locally (profiles, preferences, saved searches, exports). Do not persist fetched cache values by default.
-- Implement a job model for long operations (key scans, large fetch/decode): progressive results + cancellation + safety caps; keep UI responsive (no lockups).
-- Production posture: default enforced read-only; explicit, clearly-visible, deliberate “unlock mutations” flow (time-boxed recommended by UX/architecture).
-- Share/export as explicit artifacts (single-file Markdown bundle + “pretty snippet”) with provenance/context (env/key/TTL/decode) and redaction-by-default.
-- Desktop integration: tray menu entry points + a global keyboard shortcut that focuses primary search.
-- Accessibility and interaction standards: keyboard-first core flows, consistent `Esc` to close top-most layer, focus management, WCAG 2.1 AA target, and “reduce motion” support.
-- Layout constraints: minimum supported width ~900px (collapse inspector into a drawer), full experience ≥1100px with optional multi-pane layout; density modes (Compact default, Comfort optional).
-- Updates: manual update check + notify (GitHub Releases), with platform-appropriate install handoff; signing/notarization expected per platform.
+- Starter template requirement: initialize using create-electron-app@latest with vite-typescript; project initialization should be the first implementation story.
+- Architecture boundary requirement: renderer is UI-only, preload is minimal typed bridge, main process owns all IO/network/secrets/persistence.
+- Persistence requirement: hybrid local persistence with electron-store for prefs and SQLite for structured metadata.
+- Secrets requirement: credentials must be stored only via Electron safeStorage; never in SQLite or electron-store.
+- Linux keyring guard requirement: if safeStorage backend is basic_text, disable saved credentials and force prompt-per-session.
+- Redis auth requirement: support password and ACL (username/password).
+- Memcached auth requirement: support no-auth and optional SASL auth.
+- Redis TLS requirement: per-profile TLS toggle with custom CA bundles; no silent insecure fallback.
+- Deferred scope requirement: Redis mTLS and SSH tunneling are deferred unless explicitly required.
+- IPC contract requirement: use a single typed contract module with Zod validation and strict structured-clone-safe payloads.
+- IPC response requirement: all handlers return envelope format: success object with ok true and data, or failure object with ok false and error code/message/details.
+- Long-running operations requirement: implement cancelable job model with start returning a jobId, plus progress and completion events.
+- Performance isolation requirement: CPU-heavy decode/redaction/diff tasks run in worker_threads.
+- Naming consistency requirement: SQLite uses snake_case; IPC/UI payloads use camelCase with explicit mapping in main persistence layer.
+- Distribution requirement: release via GitHub Releases with update checks and user-driven install prompts.
+- Packaging requirement: build/package targets for Windows (Squirrel), macOS (DMG/ZIP), Linux (DEB/RPM/ZIP).
+- CI requirement: matrix builds on Windows/macOS/Linux producing release artifacts and checksums.
+- UX requirement: keyboard-first interaction model with predictable focus management and visible shortcut affordances.
+- UX requirement: trust/safety state remains always visible (environment + read-only/unlocked posture cues).
+- UX requirement: redaction-by-default value handling with deliberate safe reveal and default redacted copy behavior.
+- UX requirement: progressive loading/streaming with explicit cancel controls for long operations.
+- UX requirement: all error states provide short diagnosis plus safe next actions.
+- UX requirement: responsive desktop behavior with minimum width 900px and inspector collapse into drawer below 1100px.
+- Accessibility requirement: target WCAG 2.1 AA, full keyboard support, ARIA for custom widgets, and no color-only safety signaling.
+- Motion requirement: respect reduced-motion preferences and keep animations subtle/functional.
 
 ### FR Coverage Map
 
-### FR Coverage Map
-
-FR1: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR2: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR3: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR4: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR5: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR6: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR7: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR8: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR9: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR10: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR11: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR12: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR13: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR14: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR15: Epic 1 - Get Connected Safely (Profiles + Trust + Read-Only by Default)
-FR16: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR17: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR18: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR19: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR20: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR21: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR22: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR23: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR24: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR25: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR26: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR27: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR28: Epic 2 - Explore Redis & Memcached Data (Keys, Search, Inspect)
-FR29: Epic 3 - Understand Values Safely (Redaction + Decode + Views)
-FR30: Epic 3 - Understand Values Safely (Redaction + Decode + Views)
-FR31: Epic 3 - Understand Values Safely (Redaction + Decode + Views)
-FR32: Epic 3 - Understand Values Safely (Redaction + Decode + Views)
-FR33: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR34: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR35: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR36: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR37: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR38: Epic 5 - Controlled Mutations (Unlock + Type-Aware Edits)
-FR39: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR40: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR41: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR42: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR43: Epic 4 - Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-FR44: Epic 6 - Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-FR45: Epic 6 - Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-FR46: Epic 7 - Offline-First Local State (Preferences + Persistence Boundaries)
-FR47: Epic 7 - Offline-First Local State (Preferences + Persistence Boundaries)
-FR48: Epic 7 - Offline-First Local State (Preferences + Persistence Boundaries)
-FR49: Epic 7 - Offline-First Local State (Preferences + Persistence Boundaries)
-FR50: Epic 7 - Offline-First Local State (Preferences + Persistence Boundaries)
-FR51: Epic 6 - Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-FR52: Epic 6 - Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-
+FR1: Epic 1 - Connect Safely and Establish Trust
+FR2: Epic 1 - Connect Safely and Establish Trust
+FR3: Epic 1 - Connect Safely and Establish Trust
+FR4: Epic 1 - Connect Safely and Establish Trust
+FR5: Epic 1 - Connect Safely and Establish Trust
+FR6: Epic 1 - Connect Safely and Establish Trust
+FR7: Epic 1 - Connect Safely and Establish Trust
+FR8: Epic 1 - Connect Safely and Establish Trust
+FR9: Epic 1 - Connect Safely and Establish Trust
+FR10: Epic 1 - Connect Safely and Establish Trust
+FR11: Epic 1 - Connect Safely and Establish Trust
+FR12: Epic 1 - Connect Safely and Establish Trust
+FR13: Epic 1 - Connect Safely and Establish Trust
+FR14: Epic 1 - Connect Safely and Establish Trust
+FR15: Epic 1 - Connect Safely and Establish Trust
+FR16: Epic 2 - Explore Redis and Memcached Data
+FR17: Epic 2 - Explore Redis and Memcached Data
+FR18: Epic 2 - Explore Redis and Memcached Data
+FR19: Epic 2 - Explore Redis and Memcached Data
+FR20: Epic 2 - Explore Redis and Memcached Data
+FR21: Epic 2 - Explore Redis and Memcached Data
+FR22: Epic 2 - Explore Redis and Memcached Data
+FR23: Epic 2 - Explore Redis and Memcached Data
+FR24: Epic 2 - Explore Redis and Memcached Data
+FR25: Epic 2 - Explore Redis and Memcached Data
+FR26: Epic 4 - Perform Controlled Mutations
+FR27: Epic 2 - Explore Redis and Memcached Data
+FR28: Epic 2 - Explore Redis and Memcached Data
+FR29: Epic 3 - Interpret Values Safely
+FR30: Epic 3 - Interpret Values Safely
+FR31: Epic 3 - Interpret Values Safely
+FR32: Epic 3 - Interpret Values Safely
+FR33: Epic 3 - Interpret Values Safely
+FR34: Epic 4 - Perform Controlled Mutations
+FR35: Epic 4 - Perform Controlled Mutations
+FR36: Epic 4 - Perform Controlled Mutations
+FR37: Epic 4 - Perform Controlled Mutations
+FR38: Epic 4 - Perform Controlled Mutations
+FR39: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR40: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR41: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR42: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR43: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR44: Epic 6 - Work Faster with Desktop and Offline-First Productivity
+FR45: Epic 6 - Work Faster with Desktop and Offline-First Productivity
+FR46: Epic 6 - Work Faster with Desktop and Offline-First Productivity
+FR47: Epic 1 - Connect Safely and Establish Trust
+FR48: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR49: Epic 5 - Reuse Investigation Workflows and Share Findings
+FR50: Epic 6 - Work Faster with Desktop and Offline-First Productivity
+FR51: Epic 7 - Stay Current with Updates
+FR52: Epic 7 - Stay Current with Updates
 
 ## Epic List
 
-### Epic 1: Get Connected Safely (Profiles + Trust + Read-Only by Default)
-Users can create secure connection profiles for Redis/Memcached, connect reliably, and always understand safety posture (env + read-only/unlock state) before doing anything else.
-**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
+### Epic 1: Connect Safely and Establish Trust
+Users can create and manage connection profiles, establish secure connections, and operate with clear environment and safety state controls.
+**FRs covered:** FR1, FR2, FR3, FR4, FR5, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR47
 
-### Epic 2: Explore Redis & Memcached Data (Keys, Search, Inspect)
-Users can quickly find keys and inspect cache data (type/TTL + all supported Redis types + Memcached get/stats) with fast, responsive browsing.
+### Epic 2: Explore Redis and Memcached Data
+Users can discover keys/data structures and inspect cache metadata across Redis and Memcached to quickly understand system state.
 **FRs covered:** FR16, FR17, FR18, FR19, FR20, FR21, FR22, FR23, FR24, FR25, FR27, FR28
 
-### Epic 3: Understand Values Safely (Redaction + Decode + Views)
-Users can safely understand values via redaction-by-default, deliberate reveal, raw/formatted views, and decode pipelines—without UI lockups.
-**FRs covered:** FR29, FR30, FR31, FR32
+### Epic 3: Interpret Values Safely
+Users can understand values quickly with raw/pretty/decode workflows while keeping sensitive data protected by default.
+**FRs covered:** FR29, FR30, FR31, FR32, FR33
 
-### Epic 4: Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-Users can safely share what they found and quickly resume investigations via saved searches, recents, and exportable artifacts.
-**FRs covered:** FR33, FR39, FR40, FR41, FR42, FR43
-
-### Epic 5: Controlled Mutations (Unlock + Type-Aware Edits)
-When explicitly unlocked, users can perform supported mutations with clear feedback; when locked, mutations are reliably prevented.
+### Epic 4: Perform Controlled Mutations
+Users can perform intentional write operations only when explicitly unlocked, with safeguards and clear outcome feedback.
 **FRs covered:** FR26, FR34, FR35, FR36, FR37, FR38
 
-### Epic 6: Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-The app integrates with the desktop for speed (tray + global shortcut) and can check for updates and assist installation.
-**FRs covered:** FR44, FR45, FR51, FR52
+### Epic 5: Reuse Investigation Workflows and Share Findings
+Users can save/replay searches, reopen recent investigations, and share safe evidence artifacts.
+**FRs covered:** FR39, FR40, FR41, FR42, FR43, FR48, FR49
 
-### Epic 7: Offline-First Local State (Preferences + Persistence Boundaries)
-The app persists profiles/metadata/preferences/saved searches/exports locally while honoring the boundary of not persisting fetched values by default.
-**FRs covered:** FR46, FR47, FR48, FR49, FR50
+### Epic 6: Work Faster with Desktop and Offline-First Productivity
+Users can accelerate workflows via tray and global shortcut while relying on local persistence aligned with offline-first constraints.
+**FRs covered:** FR44, FR45, FR46, FR50
 
-## Epic 1: Get Connected Safely (Profiles + Trust + Read-Only by Default)
+### Epic 7: Stay Current with Updates
+Users can discover available updates online and initiate installation from in-app prompts.
+**FRs covered:** FR51, FR52
 
-Users can create secure connection profiles for Redis/Memcached, connect reliably, and always understand safety posture (env + read-only/unlock state) before doing anything else.
+<!-- Repeat for each epic in epics_list (N = 1, 2, 3...) -->
 
-### Story 1.1: Project Bootstrap (Forge + Vite + React + Typed IPC)
+## Epic 1: Connect Safely and Establish Trust
+
+Users can create and manage connection profiles, establish secure connections, and operate with clear environment and safety state controls.
+
+### Story 1.1: Initialize Desktop Foundation and Secure Process Boundaries
 
 As a developer,
-I want a working Electron Forge app scaffolded with the chosen stack and a minimal typed IPC bridge,
-So that I can begin implementing features with the correct security boundaries from day one.
+I want the Electron app scaffolded with main/preload/renderer boundaries,
+So that connection workflows can be implemented safely and consistently.
 
 **Acceptance Criteria:**
 
-**Given** a new repo workspace
-**When** I run the dev command
-**Then** the app launches with a renderer window and no console errors
-**And** renderer calls a sample IPC method via preload with typed request/response
+**Given** a fresh repo
+**When** the app is initialized using the selected starter template
+**Then** main, preload, and renderer processes are separated and build successfully.
+**And** context isolation is enabled and the renderer does not have direct Node access.
 
-**Given** the app is running
-**When** I inspect the code structure
-**Then** renderer/preload/main are separated and renderer cannot access Node APIs directly
+**Given** the renderer needs privileged operations
+**When** it accesses persistence, network, or secrets
+**Then** it can only do so via preload-exposed typed APIs (no ad-hoc IPC channels).
 
-**Given** the preload IPC bridge is misconfigured or unavailable
-**When** the renderer attempts the sample IPC call
-**Then** the renderer receives a clear error response (not a hang)
-**And** the app remains usable (no crash / frozen UI)
+### Story 1.2: UI Foundation (Tailwind Tokens + Base UI + shadcn Copy-In)
 
-### Story 1.2: Connection Profiles: CRUD + Local Persistence (metadata only)
+As a developer,
+I want the renderer UI system set up with semantic tokens and accessible primitives,
+So that every feature ships with consistent, keyboard-first components.
+
+**Acceptance Criteria:**
+
+**Given** the renderer build
+**When** Tailwind is configured
+**Then** semantic design tokens exist for surfaces/text/border/focus/danger and env/safety states.
+
+**Given** UI primitives are needed (buttons, dialogs, menus)
+**When** components are created
+**Then** they follow a shadcn-style copy-in approach backed by Base UI primitives (not Radix).
+
+**Given** baseline components (at least Button and Dialog)
+**When** rendered in the app
+**Then** they are keyboard accessible with visible focus states and predictable Escape behavior.
+
+### Story 1.3: Create and Manage Connection Profiles
 
 As a cache user,
 I want to create, edit, delete, tag, favorite, and search connection profiles,
-So that I can manage many environments and quickly pick the right one.
+So that I can quickly organize and access target environments.
 
 **Acceptance Criteria:**
 
-**Given** I am on the Profiles screen
-**When** I create or edit a profile (name, host, port, type, tags, env label)
-**Then** the profile is saved locally and appears in the list
-**And** search and tag/favorite filters find it
+**Given** the profiles UI
+**When** I create, edit, or delete a profile
+**Then** changes persist locally and validation errors are shown clearly (FR1).
 
-**Given** a saved profile
-**When** I delete it
-**Then** it is removed from local storage and no longer selectable
+**Given** multiple profiles
+**When** I tag, favorite, or search profiles
+**Then** results filter correctly and update immediately (FR2).
 
-**Given** I attempt to save a profile with invalid or incomplete fields (e.g., missing host/port)
-**When** I try to save
-**Then** the app prevents saving and shows field-level validation errors
+**Given** the app restarts
+**When** I reopen the app
+**Then** profile metadata is restored from local persistence (FR47).
 
-**Given** local persistence fails (e.g., disk error)
-**When** I try to create, update, or delete a profile
-**Then** the app shows an actionable error and does not corrupt existing profiles
-
-### Story 1.3: Secrets Storage: Keychain-backed credentials with “prompt every time” option
+### Story 1.4: Configure Authentication and Secure Credential Handling
 
 As a cache user,
-I want to choose whether to save credentials in the OS keychain or be prompted each time,
-So that my secrets are safe and I control persistence.
+I want to configure Redis/Memcached authentication and credential persistence policy,
+So that I can connect securely without exposing secrets.
 
 **Acceptance Criteria:**
 
-**Given** a profile with auth configured
-**When** I choose “save credentials”
-**Then** credentials are stored only via OS credential store and not written to app DB/files
+**Given** a profile with authentication enabled
+**When** I choose to save credentials
+**Then** secrets are stored only via safeStorage and never in plaintext on disk (NFR8, NFR9).
 
-**Given** a profile set to “prompt every time”
-**When** I connect
-**Then** I am prompted for credentials and they are not persisted after the session
-
-**Given** the OS credential store is unavailable or disallows secure storage
-**When** I try to enable “save credentials”
-**Then** the app prevents saving secrets and clearly explains the limitation (falling back to prompt-only behavior)
-
-**Given** saving to the OS credential store fails
+**Given** safeStorage reports a basic_text backend
 **When** I attempt to save credentials
-**Then** the app reports the failure and does not store credentials in any plaintext/local file as a fallback
+**Then** saving is disabled and prompt-per-session is enforced with clear guidance (NFR9).
 
-### Story 1.4: Connect to Redis/Memcached with error reporting and connection status
+**Given** Redis auth settings
+**When** I configure authentication
+**Then** password-based auth is supported (FR5).
+
+**Given** a profile with sensitive credentials
+**When** I choose “prompt every time” for that profile
+**Then** credentials are not persisted and I am prompted each session before connecting (FR7).
+
+### Story 1.5: Connect, Disconnect, and Switch Sessions with Status and Errors
 
 As a cache user,
-I want to connect to Redis or Memcached using a profile and see clear status and errors,
-So that I can reliably reach the right cache and recover from failures.
+I want to connect, disconnect, and switch between connections without restarting,
+So that I can move across environments quickly and recover from failures.
 
 **Acceptance Criteria:**
 
-**Given** a valid Redis profile
+**Given** a valid profile
 **When** I connect
-**Then** the app shows connected status and server identity basics (host/port) in the UI
+**Then** the app connects to the selected Redis or Memcached target (FR3) (FR4).
 
-**Given** an invalid or unreachable profile
+**Given** an active connection
+**When** I disconnect or switch profiles
+**Then** the session transitions complete without restarting the app (FR8).
+
+**Given** connection attempts succeed or fail
+**When** status changes
+**Then** the app shows connection status and the last connection error for the active connection (FR9).
+**And** failures provide actionable errors and the app remains recoverable (NFR7).
+
+### Story 1.6: Configure Redis TLS per Profile (When Supported)
+
+As a cache user,
+I want to configure TLS for Redis connections when supported by the target,
+So that remote connections can be secured.
+
+**Acceptance Criteria:**
+
+**Given** a Redis profile
+**When** I enable or disable TLS settings
+**Then** the connection uses TLS according to the profile configuration (FR6).
+
+**Given** an insecure or misconfigured TLS setup
 **When** I attempt to connect
-**Then** I see an actionable error message and remain in a recoverable state
+**Then** the app surfaces the risk or error clearly and does not silently fall back to insecure behavior (NFR10).
 
-### Story 1.5: Trust & Safety Chip: environment label + read-only default + unlock indicator
+### Story 1.7: Environment Labels and Default Safety Posture (Read-Only by Default for Prod)
 
 As a cache user,
-I want to always see what environment I am connected to and whether I am in read-only or unlocked mode,
-So that I avoid wrong-environment mistakes.
+I want environment labels and production-safe defaults,
+So that I avoid accidental risky operations.
 
 **Acceptance Criteria:**
 
-**Given** I am connected to any profile
-**When** I view the app chrome
-**Then** an always-visible chip shows env label and safety mode
+**Given** profile settings
+**When** I assign an environment label
+**Then** the active environment is always visible in the app (FR10) (FR11).
 
-**Given** a profile marked as production
+**Given** a profile labeled as production
 **When** I connect
-**Then** mutations are disabled by default and the UI clearly indicates read-only
+**Then** the app enforces read-only mode by default for that connection (FR12).
 
-**Given** the environment label/state cannot be determined confidently
+### Story 1.8: Unlock and Relock Mutations Mode with Explicit Safety Signals
+
+As a cache user,
+I want to deliberately unlock mutations and return to read-only,
+So that write operations are always intentional.
+
+**Acceptance Criteria:**
+
+**Given** an active connection in read-only mode
+**When** I explicitly unlock mutations
+**Then** mutation-enabled state is visibly and persistently indicated (FR13) (FR15).
+
+**Given** unlocked mode
+**When** I relock
+**Then** the connection returns to read-only mode and the UI reflects that immediately (FR14).
+
+## Epic 2: Explore Redis and Memcached Data
+
+Users can discover Redis keys quickly (prefix browsing plus search), inspect metadata (type/TTL), and retrieve values with safe performance caps; for Memcached, users can fetch a value by key and review server stats.
+
+### Story 2.1: Redis Key Discovery (Prefix Browse + Search) with Progressive, Cancelable Results
+
+As a cache user,
+I want to browse Redis keys via prefix/tree navigation and search by substring/pattern,
+So that I can find the right key fast without freezing the app.
+
+**Acceptance Criteria:**
+
+**Given** an active Redis connection
+**When** I browse keys by prefix/tree navigation
+**Then** I can drill into prefixes and see matching keys (FR16).
+
+**Given** an active Redis connection
+**When** I run a substring/pattern search
+**Then** results begin streaming quickly and I can cancel the search (FR17) (NFR3) (NFR5).
+
+**Given** a large keyspace or long-running scan
+**When** results are incomplete due to limits/caps
+**Then** the UI shows an explicit "search in progress" or "limit reached" state with safe next actions (NFR3, NFR6).
+
+### Story 2.2: Redis Key Metadata in Results (Type + TTL)
+
+As a cache user,
+I want to see Redis key metadata including type and TTL when available,
+So that I can choose the right keys to inspect.
+
+**Acceptance Criteria:**
+
+**Given** Redis key results are displayed
+**When** metadata is available
+**Then** each key can show its type and TTL (FR18).
+
+**Given** TTL/type lookups are slow or fail
+**When** metadata is requested
+**Then** the UI remains responsive and errors are actionable without forcing an app restart (NFR5, NFR7).
+
+### Story 2.3: Redis Inspect Strings and Hashes (Fetch + Minimal Viewer with Safety Caps)
+
+As a cache user,
+I want to inspect Redis string and hash values,
+So that I can understand what a key contains.
+
+**Acceptance Criteria:**
+
+**Given** a selected Redis string key
+**When** I open the inspector
+**Then** the app fetches and displays the string value (FR19).
+
+**Given** a selected Redis hash key
+**When** I open the inspector
+**Then** the app fetches and displays fields and values (FR20).
+
+**Given** values exceed safe preview limits
+**When** I inspect the key
+**Then** the app degrades gracefully (partial preview + clear "too large" state) and stays responsive (NFR4, NFR6, NFR16).
+
+### Story 2.4: Redis Inspect Lists, Sets, and Sorted Sets (Fetch + Minimal Viewer with Safety Caps)
+
+As a cache user,
+I want to inspect Redis list, set, and sorted set values,
+So that I can understand ordered and collection-based data.
+
+**Acceptance Criteria:**
+
+**Given** a selected Redis list key
+**When** I open the inspector
+**Then** the app fetches and displays ordered elements (FR21).
+
+**Given** a selected Redis set key
+**When** I open the inspector
+**Then** the app fetches and displays members (FR22).
+
+**Given** a selected Redis sorted set key
+**When** I open the inspector
+**Then** the app fetches and displays members and scores (FR23).
+
+**Given** results are large
+**When** I inspect a collection
+**Then** the app shows partial results safely and provides an explicit path to export partial/raw later (NFR6, NFR18).
+
+### Story 2.5: Redis Inspect Streams (Fetch + Minimal Viewer with Safety Caps)
+
+As a cache user,
+I want to inspect Redis stream data,
+So that I can review recent entries and their fields.
+
+**Acceptance Criteria:**
+
+**Given** a selected Redis stream key
+**When** I open the inspector
+**Then** the app fetches and displays entries and fields (FR24).
+
+**Given** stream entry counts can be high
+**When** I inspect a stream
+**Then** the app limits the default fetch safely, remains responsive, and makes any truncation obvious (NFR5, NFR6).
+
+### Story 2.6: Memcached Get by Key (Read) with Basic Metadata and Error Handling
+
+As a cache user,
+I want to fetch a Memcached value by key,
+So that I can verify what is currently cached.
+
+**Acceptance Criteria:**
+
+**Given** an active Memcached connection
+**When** I enter a key and request a fetch
+**Then** the app retrieves the value by key (FR25).
+
+**Given** Memcached exposes metadata for a fetched value
+**When** the fetch succeeds
+**Then** the app displays basic metadata when available (e.g., size/flags) (FR28).
+
+**Given** the fetch fails (missing key, network error)
+**When** the request completes
+**Then** the app shows an actionable error and remains recoverable without restart (NFR7).
+
+### Story 2.7: Memcached Server Statistics
+
+As a cache user,
+I want to view Memcached server statistics,
+So that I can assess cache health quickly.
+
+**Acceptance Criteria:**
+
+**Given** an active Memcached connection
+**When** I open the stats view
+**Then** the app displays server statistics and refreshes on demand (FR27).
+
+**Given** the server is unreachable or times out
+**When** stats are requested
+**Then** the app reports the failure with next actions and keeps the UI responsive (NFR5, NFR7).
+
+## Epic 3: Interpret Values Safely
+
+Users can view cache values in a safe preview mode, understand decoded/formatted representations, and copy/share in a redaction-safe way by default.
+
+### Story 3.1: Safe Value Preview Limits and "Cap Reached" States
+
+As a cache user,
+I want value previews to be safe and fast even for large payloads,
+So that the app stays responsive under pressure.
+
+**Acceptance Criteria:**
+
+**Given** an inspected value
+**When** the decoded output is within limits
+**Then** it renders quickly and the UI remains responsive (NFR4, NFR5).
+
+**Given** an inspected value exceeds the default preview limit
+**When** I open it in the inspector
+**Then** the app shows a clear "too large to preview safely" state with a partial preview when feasible (NFR16).
+
+**Given** structured rendering would exceed depth limits
+**When** I view formatted output
+**Then** the app truncates/collapses beyond the limit with clear indicators (NFR17).
+
+### Story 3.2: Redaction-by-Default Safe Preview Mode
+
+As a cache user,
+I want values to be redacted by default with clear affordances,
+So that I do not accidentally expose secrets during debugging or screen share.
+
+**Acceptance Criteria:**
+
+**Given** a value that appears sensitive
+**When** it is displayed in the inspector
+**Then** sensitive-looking segments are redacted by default (FR29) (NFR11).
+
+**Given** redaction is applied
+**When** I view the value
+**Then** the UI clearly indicates that redaction is active and what policy is applied (NFR11).
+
+### Story 3.3: Deliberate Safe Reveal Interaction
+
+As a cache user,
+I want a deliberate safe reveal interaction to view redacted content,
+So that revealing secrets is an intentional action.
+
+**Acceptance Criteria:**
+
+**Given** redacted content in the inspector
+**When** I perform the safe reveal interaction
+**Then** the content is revealed deliberately and the UI clearly indicates it is revealed (FR30).
+
+**Given** revealed content
+**When** I navigate away or re-lock safety state
+**Then** the app re-hides revealed content to return to safe defaults (NFR11).
+
+### Story 3.4: Raw vs Formatted Views
+
+As a cache user,
+I want to switch between raw and formatted views,
+So that I can quickly validate the underlying bytes and the interpreted meaning.
+
+**Acceptance Criteria:**
+
+**Given** an inspected value where formatting is applicable
+**When** I switch between Raw and Formatted
+**Then** the correct representation is shown without losing my place (FR31).
+
+**Given** long values or expensive formatting
+**When** I toggle views
+**Then** the UI remains responsive and does not block other interactions (NFR5).
+
+### Story 3.5: Decode Pipeline Selection and Visibility
+
+As a cache user,
+I want to apply a decode pipeline and see which decode is active,
+So that I can understand how the app is interpreting the value.
+
+**Acceptance Criteria:**
+
+**Given** an inspected value
+**When** I choose a decode pipeline (e.g., raw text, JSON pretty)
+**Then** the viewer updates and indicates the active decoding choice (FR32).
+
+**Given** decoding fails or is unsupported
+**When** the pipeline runs
+**Then** the app shows a guided failure state and safe fallback actions (NFR7).
+
+### Story 3.6: Copy in Redacted-Safe Form
+
+As a cache user,
+I want to copy a value representation in a redacted-safe form by default,
+So that I can share findings without accidentally leaking secrets.
+
+**Acceptance Criteria:**
+
+**Given** an inspected value with redaction active
+**When** I copy the value
+**Then** the copied content is redacted-safe by default (FR33).
+
+**Given** the value is revealed in the UI
+**When** I copy
+**Then** the default copy action still copies the redacted-safe form unless I explicitly choose otherwise (NFR11).
+
+## Epic 4: Perform Controlled Mutations
+
+Users can perform intentional write operations only when explicitly unlocked, with clear safeguards and feedback that prevent accidental production damage.
+
+### Story 4.1: Enforce Mutation Blocking by Default (Read-Only Posture)
+
+As a cache user,
+I want mutation operations to be blocked unless I have explicitly unlocked mutations,
+So that I cannot accidentally modify data.
+
+**Acceptance Criteria:**
+
+**Given** the active connection is not in unlocked mutations mode
+**When** I attempt any mutation operation in the UI
+**Then** the action is blocked with a clear explanation (FR35).
+
+**Given** a production-labeled profile
 **When** I connect
-**Then** the Trust & Safety chip shows an explicit “Unknown”/“Unverified” state
-**And** the app defaults to the safest posture (mutations disabled)
+**Then** mutations remain blocked by default until I explicitly unlock (FR12) (FR35).
 
-## Epic 2: Explore Redis & Memcached Data (Keys, Search, Inspect)
-
-Users can quickly find keys and inspect cache data (type/TTL + all supported Redis types + Memcached get/stats) with fast, responsive browsing.
-
-### Story 2.1: Redis Keyspace Explorer: prefix navigation + streaming search
+### Story 4.2: Redis Mutations for Strings and Hashes (When Unlocked)
 
 As a cache user,
-I want to browse keys via prefix/tree navigation and search by substring/pattern within safety limits,
-So that I can find the right key quickly even in large keyspaces.
+I want to mutate Redis string and hash data in unlocked mode,
+So that I can fix or test cache state intentionally.
 
 **Acceptance Criteria:**
 
-**Given** I am connected to Redis
-**When** I select a prefix and search
-**Then** I see progressively loading results and can cancel the operation
+**Given** unlocked mutations mode is enabled
+**When** I set a string value
+**Then** Redis is updated and the UI shows success/failure with reason (FR34) (FR36) (FR38).
 
-**Given** a large keyspace
-**When** search limits are hit
-**Then** the UI explains the limit and offers safe next actions (narrow prefix, refine query)
+**Given** unlocked mutations mode is enabled
+**When** I update a hash field
+**Then** Redis is updated and the UI shows success/failure with reason (FR34) (FR36) (FR38).
 
-### Story 2.2: Key Metadata Panel: type + TTL (where available)
+### Story 4.3: Redis Mutations for Lists, Sets, ZSets, and Streams (When Unlocked)
 
 As a cache user,
-I want to view key metadata like type and TTL,
-So that I can quickly judge what I’m looking at.
+I want to mutate Redis collection and stream types in unlocked mode,
+So that I can apply targeted edits across common data structures.
 
 **Acceptance Criteria:**
 
-**Given** I select a Redis key
-**When** metadata loads
-**Then** type and TTL are displayed (or clearly marked unavailable)
+**Given** unlocked mutations mode is enabled
+**When** I push a list element, add a set member, add a zset member with score, or add a stream entry
+**Then** the operation succeeds or fails with clear feedback (FR34) (FR36) (FR38).
 
-### Story 2.3: Inspect Redis Strings/Hashes/Lists/Sets/ZSets/Streams (read-only)
+### Story 4.4: Redis Key Deletion (When Unlocked)
 
 As a cache user,
-I want to inspect each supported Redis data type safely,
-So that I can debug data structures without using the CLI.
+I want to delete a Redis key in unlocked mode,
+So that I can remove incorrect or stale cached data safely.
 
 **Acceptance Criteria:**
 
-**Given** a key of a supported type
-**When** I open it
-**Then** I see a stable inspector view with pagination/virtualization where needed
+**Given** unlocked mutations mode is enabled
+**When** I delete a key
+**Then** the key is removed and the UI confirms the outcome (FR37) (FR38).
 
-### Story 2.4: Memcached: get by key + stats (read-only)
+### Story 4.5: Memcached Set by Key (When Unlocked)
 
 As a cache user,
-I want to fetch a value by key and view server stats from Memcached,
-So that I can diagnose simple Memcached issues quickly.
+I want to set a Memcached value by key in unlocked mode,
+So that I can test or correct cached values intentionally.
 
 **Acceptance Criteria:**
 
-**Given** I am connected to Memcached
-**When** I fetch a key
-**Then** I see the value and any available metadata (size/flags if exposed)
-
-**Given** I am connected to Memcached
-**When** I open stats
-**Then** I see a stats table and can refresh it
-
-## Epic 3: Understand Values Safely (Redaction + Decode + Views)
-
-Users can safely understand values via redaction-by-default, deliberate reveal, raw/formatted views, and decode pipelines—without UI lockups.
-
-### Story 3.1: Redaction-by-default previews with deliberate “safe reveal”
-
-As a cache user,
-I want values to be redacted by default and only revealed deliberately,
-So that I can inspect data without accidentally leaking secrets.
-
-**Acceptance Criteria:**
-
-**Given** a value containing sensitive-looking patterns
-**When** I preview it
-**Then** sensitive segments are redacted by default
-
-**Given** a redacted value
-**When** I choose “safe reveal”
-**Then** the UI requires a deliberate action and then shows the content
-
-### Story 3.2: Pretty ↔ Raw viewer modes for inspectable values
-
-As a cache user,
-I want to switch between formatted and raw representations,
-So that I can understand data without losing fidelity.
-
-**Acceptance Criteria:**
-
-**Given** a JSON-ish value
-**When** I toggle Pretty
-**Then** it renders formatted with truncation/safety limits
-
-**Given** any value
-**When** I toggle Raw
-**Then** I see the raw bytes/text representation within preview caps
-
-### Story 3.3: Decode pipeline (JSON pretty and extensible pipeline model)
-
-As a cache user,
-I want to apply a decode pipeline and see which decoding is active,
-So that opaque payloads become understandable quickly.
-
-**Acceptance Criteria:**
-
-**Given** a value
-**When** I select a decode pipeline
-**Then** the rendered view updates and the active pipeline is clearly indicated
-
-## Epic 4: Share Evidence & Revisit Work (Copy/Export + Recents + Saved Searches)
-
-Users can safely share what they found and quickly resume investigations via saved searches, recents, and exportable artifacts.
-
-### Story 4.1: Safe copy to clipboard (redacted-safe default)
-
-As a cache user,
-I want to copy a value representation to the clipboard safely,
-So that I can share without leaking secrets by default.
-
-**Acceptance Criteria:**
-
-**Given** a value view
-**When** I click Copy
-**Then** the clipboard content is redacted-safe by default and includes minimal context
-
-### Story 4.2: Export minimal Markdown bundle (single file) with context
-
-As a cache user,
-I want to export a single-file Markdown bundle with key metadata, decode context, and redacted preview,
-So that I can attach evidence to tickets offline.
-
-**Acceptance Criteria:**
-
-**Given** an inspected key
-**When** I export
-**Then** a single Markdown file is created including env label, key, TTL, decode pipeline, and redacted preview
-
-### Story 4.3: Saved searches and quick recall (with optional scoping)
-
-As a cache user,
-I want to save searches and recall them later,
-So that I can reuse common workflows.
-
-**Acceptance Criteria:**
-
-**Given** a search query and optional scope
-**When** I save it
-**Then** it appears in Saved Searches and can be re-run
-
-### Story 4.4: Recents: reopen recently inspected keys/values
-
-As a cache user,
-I want to view and reopen recently inspected keys/values for the session,
-So that I can bounce between items while debugging.
-
-**Acceptance Criteria:**
-
-**Given** I inspected keys during this session
-**When** I open Recents
-**Then** I can reopen a prior key and the inspector restores context
-
-## Epic 5: Controlled Mutations (Unlock + Type-Aware Edits)
-
-When explicitly unlocked, users can perform supported mutations with clear feedback; when locked, mutations are reliably prevented.
-
-### Story 5.1: Unlock mutations flow + locked-mode enforcement
-
-As a cache user,
-I want a deliberate unlock flow for enabling mutations and strict enforcement when locked,
-So that I avoid accidental writes and understand risk clearly.
-
-**Acceptance Criteria:**
-
-**Given** mutations are locked
-**When** I attempt a mutation action
-**Then** the app blocks it and explains how to unlock
-
-**Given** I run the unlock flow
-**When** I confirm intent
-**Then** mutations become enabled and the UI shows an always-visible unlocked indicator
-
-**Given** I start the unlock flow
-**When** I cancel or fail confirmation
-**Then** mutations remain locked and the UI continues to indicate read-only/locked mode
-
-**Given** mutations are unlocked
-**When** the unlock duration expires or I explicitly re-lock
-**Then** mutations return to locked mode and mutation actions are blocked again
-
-### Story 5.2: Redis key-level mutations (type-aware) with feedback
-
-As a cache user,
-I want to perform supported mutation operations for the inspected Redis type,
-So that I can fix issues directly when I intend to.
-
-**Acceptance Criteria:**
-
-**Given** mutations are unlocked
-**When** I edit a string or update a hash field / push list element / add set member / add zset member / add stream entry
-**Then** the operation succeeds or fails with a clear reason
-
-### Story 5.3: Delete Redis key (guarded) with success/failure feedback
-
-As a cache user,
-I want to delete a key when mutations are enabled,
-So that I can remove bad data intentionally.
-
-**Acceptance Criteria:**
-
-**Given** mutations are unlocked
-**When** I delete a key and confirm
-**Then** the key is removed and the UI updates the explorer list
-
-**Given** mutations are unlocked
-**When** I attempt to delete a key that no longer exists
-**Then** the app shows a “not found” (or equivalent) result and keeps the UI state consistent
-
-**Given** mutations are unlocked
-**When** the delete operation fails (e.g., server error)
-**Then** the app shows an actionable error and does not incorrectly remove the key from the UI
-
-### Story 5.4: Memcached set (only when unlocked)
-
-As a cache user,
-I want to set a Memcached value by key when mutations are enabled,
-So that I can validate fixes or adjust cached values intentionally.
-
-**Acceptance Criteria:**
-
-**Given** I am connected to Memcached and mutations are unlocked
+**Given** unlocked mutations mode is enabled on a Memcached connection
 **When** I set a value by key
-**Then** the operation completes with clear feedback
+**Then** the operation succeeds or fails with clear feedback (FR26) (FR38).
 
-**Given** mutations are locked
-**When** I attempt to set a Memcached value
-**Then** the app blocks the action and indicates that unlocking is required
+## Epic 5: Reuse Investigation Workflows and Share Findings
 
-**Given** I am connected to Memcached and mutations are unlocked
-**When** the set operation fails (e.g., timeout or server error)
-**Then** the app shows an actionable error and does not claim the value was updated
+Users can reuse common investigation workflows and share evidence artifacts safely without leaking secrets by default.
 
-## Epic 6: Desktop Power & Updates (Tray + Global Shortcut + Update Awareness)
-
-The app integrates with the desktop for speed (tray + global shortcut) and can check for updates and assist installation.
-
-### Story 6.1: Tray menu: quick open + recent connections + safety indicator
+### Story 5.1: Save and Recall Searches (Scoped)
 
 As a cache user,
-I want to access core actions from a tray menu with a visible mode indicator,
-So that I can jump into debugging quickly.
+I want to save searches (query plus optional scope) and recall them later,
+So that repetitive investigations are fast.
+
+**Acceptance Criteria:**
+
+**Given** an explorer search
+**When** I save it with optional scope (connection and/or prefix)
+**Then** it is stored locally and appears in a saved searches list (FR39) (FR48).
+
+**Given** a saved search
+**When** I select it
+**Then** the app re-runs the search with the saved scope and shows results (FR40).
+
+### Story 5.2: Recent Keys and Investigation History (Session)
+
+As a cache user,
+I want to view and reopen recently inspected keys for the current session,
+So that I can bounce between findings quickly.
+
+**Acceptance Criteria:**
+
+**Given** I inspect keys during a session
+**When** I open "Recents"
+**Then** I can see and reopen recently inspected keys/values for the current session (FR41).
+
+### Story 5.3: Export Minimal Markdown Bundle (Redacted by Default)
+
+As a cache user,
+I want to export a minimal single-file Markdown bundle with safe context,
+So that I can share evidence offline without exposing secrets.
+
+**Acceptance Criteria:**
+
+**Given** an inspected key/value
+**When** I export the Markdown bundle
+**Then** it includes key metadata, decode context, and a redacted preview by default (FR42) (NFR11).
+
+**Given** the export completes
+**When** I locate it
+**Then** the artifact is saved locally as an explicit export (FR49).
+
+### Story 5.4: Copy "Pretty Snippet" for Sharing (Safe Context)
+
+As a cache user,
+I want to copy a pretty snippet that includes safe context without secrets by default,
+So that I can share findings in chat or tickets.
+
+**Acceptance Criteria:**
+
+**Given** an inspected key/value
+**When** I copy the pretty snippet
+**Then** it includes env label, key, TTL, and decode info while redacting sensitive content by default (FR43) (NFR11).
+
+## Epic 6: Work Faster with Desktop and Offline-First Productivity
+
+Users can access core actions quickly via desktop integration and rely on predictable local-first behavior without requiring internet access for core workflows.
+
+### Story 6.1: Tray Menu Quick Actions with Safety Indicator
+
+As a cache user,
+I want core actions accessible from a tray menu with a safety indicator,
+So that I can quickly re-enter context and avoid mistakes.
 
 **Acceptance Criteria:**
 
 **Given** the app is running
 **When** I open the tray menu
-**Then** I can open the app and see recent connections and the current safety mode
+**Then** I can access core actions (open app, recent connections) and see current safety/mode indicator (FR44).
 
-### Story 6.2: Global shortcut focuses primary search
+### Story 6.2: Global Shortcut to Focus Search
 
 As a cache user,
-I want a global keyboard shortcut that brings the app forward and focuses search,
-So that I can start an investigation instantly.
+I want a global keyboard shortcut to bring the app forward and focus search,
+So that I can jump in and find keys immediately.
 
 **Acceptance Criteria:**
 
 **Given** the app is running in the background
-**When** I press the configured shortcut
-**Then** the app is focused and the search input is ready
+**When** I trigger the global shortcut
+**Then** the app comes to the foreground and focuses the search field (FR45).
 
-### Story 6.3: Update awareness: check online + prompt to install
-
-As a cache user,
-I want to be notified when an update is available and initiate installation,
-So that I can keep the app current.
-
-**Acceptance Criteria:**
-
-**Given** the app is online
-**When** I check for updates
-**Then** I see whether a newer version exists and can start the install handoff
-
-## Epic 7: Offline-First Local State (Preferences + Persistence Boundaries)
-
-The app persists profiles/metadata/preferences/saved searches/exports locally while honoring the boundary of not persisting fetched values by default.
-
-### Story 7.1: Preferences persistence (local, offline-first)
+### Story 6.3: Local Preferences Storage
 
 As a cache user,
 I want my preferences stored locally,
-So that the app behaves consistently across sessions offline.
+So that the app behaves consistently across sessions without needing a backend.
 
 **Acceptance Criteria:**
 
-**Given** I change a preference (theme/density/limits)
+**Given** I change user preferences
 **When** I restart the app
-**Then** the preference is preserved locally
+**Then** preferences are restored from local storage (FR46) (NFR12).
 
-### Story 7.2: Saved searches persistence (local)
+### Story 6.4: Do Not Persist Fetched Cache Values by Default
 
 As a cache user,
-I want saved searches persisted locally,
-So that I can reuse them across sessions.
-
-**Acceptance Criteria:**
-
-**Given** I saved a search
-**When** I restart the app
-**Then** the saved search remains available
-
-### Story 7.3: Export artifacts index + local storage
-
-As a cache user,
-I want exports stored and indexed locally,
-So that I can find past evidence bundles.
-
-**Acceptance Criteria:**
-
-**Given** I exported a Markdown bundle
-**When** I open Exports
-**Then** I see the artifact listed and can open the file
-
-### Story 7.4: No fetched cache values persisted by default (enforced)
-
-As a security-minded user,
 I want the app to avoid persisting fetched cache values by default,
-So that sensitive data doesn’t end up on disk accidentally.
+So that sensitive cache content is not retained on disk unintentionally.
 
 **Acceptance Criteria:**
 
-**Given** I inspect values during a session
-**When** I inspect app storage locations
-**Then** no raw fetched values are stored unless I explicitly export
+**Given** I inspect cache values in the UI
+**When** I close and reopen the app
+**Then** previously fetched values are not stored/restored automatically (FR50) (NFR13).
+
+**Given** I want to retain evidence
+**When** I use export features
+**Then** only explicit export artifacts are saved locally (FR49).
+
+## Epic 7: Stay Current with Updates
+
+Users can check for updates when online and initiate installation through a platform-appropriate flow.
+
+### Story 7.1: Check for Available Updates and Notify User
+
+As a cache user,
+I want the app to check for available updates when online,
+So that I can stay current without manual monitoring.
+
+**Acceptance Criteria:**
+
+**Given** the app has internet access
+**When** the update check runs
+**Then** the app can detect a newer version and notify the user (FR51).
+
+### Story 7.2: User-Initiated Update Install Handoff
+
+As a cache user,
+I want to initiate installing an update from the prompt,
+So that I can install updates using the platform-appropriate flow.
+
+**Acceptance Criteria:**
+
+**Given** an update is available
+**When** I accept the prompt to install
+**Then** the app hands off to the appropriate download/install flow and clearly indicates next steps (FR52).
