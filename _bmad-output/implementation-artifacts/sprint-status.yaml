@@ -1,0 +1,91 @@
+# generated: 2026-02-09
+# project: cachify-studio
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: /home/jay/Programming/cachify-studio/_bmad-output/implementation-artifacts
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - SM typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+
+generated: '2026-02-09'
+project: cachify-studio
+project_key: NOKEY
+tracking_system: file-system
+story_location: /home/jay/Programming/cachify-studio/_bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-initialize-desktop-foundation-and-secure-process-boundaries: backlog
+  1-2-ui-foundation-tailwind-tokens-base-ui-shadcn-copy-in: backlog
+  1-3-create-and-manage-connection-profiles: backlog
+  1-4-configure-authentication-and-secure-credential-handling: backlog
+  1-5-connect-disconnect-and-switch-sessions-with-status-and-errors: backlog
+  1-6-configure-redis-tls-per-profile-when-supported: backlog
+  1-7-environment-labels-and-default-safety-posture-read-only-by-default-for-prod: backlog
+  1-8-unlock-and-relock-mutations-mode-with-explicit-safety-signals: backlog
+  epic-1-retrospective: optional
+  epic-2: backlog
+  2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results: backlog
+  2-2-redis-key-metadata-in-results-type-ttl: backlog
+  2-3-redis-inspect-strings-and-hashes-fetch-minimal-viewer-with-safety-caps: backlog
+  2-4-redis-inspect-lists-sets-and-sorted-sets-fetch-minimal-viewer-with-safety-caps: backlog
+  2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps: backlog
+  2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling: backlog
+  2-7-memcached-server-statistics: backlog
+  epic-2-retrospective: optional
+  epic-3: backlog
+  3-1-safe-value-preview-limits-and-cap-reached-states: backlog
+  3-2-redaction-by-default-safe-preview-mode: backlog
+  3-3-deliberate-safe-reveal-interaction: backlog
+  3-4-raw-vs-formatted-views: backlog
+  3-5-decode-pipeline-selection-and-visibility: backlog
+  3-6-copy-in-redacted-safe-form: backlog
+  epic-3-retrospective: optional
+  epic-4: backlog
+  4-1-enforce-mutation-blocking-by-default-read-only-posture: backlog
+  4-2-redis-mutations-for-strings-and-hashes-when-unlocked: backlog
+  4-3-redis-mutations-for-lists-sets-zsets-and-streams-when-unlocked: backlog
+  4-4-redis-key-deletion-when-unlocked: backlog
+  4-5-memcached-set-by-key-when-unlocked: backlog
+  epic-4-retrospective: optional
+  epic-5: backlog
+  5-1-save-and-recall-searches-scoped: backlog
+  5-2-recent-keys-and-investigation-history-session: backlog
+  5-3-export-minimal-markdown-bundle-redacted-by-default: backlog
+  5-4-copy-pretty-snippet-for-sharing-safe-context: backlog
+  epic-5-retrospective: optional
+  epic-6: backlog
+  6-1-tray-menu-quick-actions-with-safety-indicator: backlog
+  6-2-global-shortcut-to-focus-search: backlog
+  6-3-local-preferences-storage: backlog
+  6-4-do-not-persist-fetched-cache-values-by-default: backlog
+  epic-6-retrospective: optional
+  epic-7: backlog
+  7-1-check-for-available-updates-and-notify-user: backlog
+  7-2-user-initiated-update-install-handoff: backlog
+  epic-7-retrospective: optional
