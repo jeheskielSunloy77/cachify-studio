@@ -1,0 +1,28 @@
+:root {
+  color-scheme: light;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+body {
+  margin: 0;
+  background: #f3f5f7;
+  color: #112233;
+}
+
+main {
+  max-width: 720px;
+  margin: 64px auto;
+  padding: 24px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 12px 40px rgba(17, 34, 51, 0.12);
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  background: #1f6feb;
+  color: #ffffff;
+  cursor: pointer;
+}

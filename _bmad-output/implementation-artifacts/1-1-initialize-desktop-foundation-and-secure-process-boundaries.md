@@ -1,6 +1,6 @@
 # Story 1.1: Initialize Desktop Foundation and Secure Process Boundaries
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-09
 Story Key: `1-1-initialize-desktop-foundation-and-secure-process-boundaries`
@@ -19,23 +19,23 @@ so that connection workflows can be implemented safely and consistently.
 
 ## Tasks / Subtasks
 
-- [ ] Scaffold app using Electron Forge `vite-typescript` template (per architecture doc)
-  - [ ] Confirm `contextIsolation: true` and `nodeIntegration: false` (renderer has no Node access)
-  - [ ] Confirm renderer builds and loads (dev + packaged build smoke)
-- [ ] Add React to the Vite renderer
-  - [ ] Add `@vitejs/plugin-react`, `react`, `react-dom`, TypeScript typings
-- [ ] Create a typed IPC contract module (single source of truth)
-  - [ ] Add `src/shared/ipc/ipc.contract.ts` with Zod schemas for every endpoint (start with a minimal “app:ping”)
-  - [ ] Define and enforce the IPC response envelope: `{ ok: true, data } | { ok: false, error: { code, message, details? } }`
-- [ ] Implement preload bridge as a minimal typed API surface
-  - [ ] Expose typed API via `contextBridge.exposeInMainWorld`
-  - [ ] Ensure IPC payloads are structured-clone safe (plain objects only)
-- [ ] Add minimal main IPC wiring
-  - [ ] Register handlers for the contract endpoints
-  - [ ] No direct DB/file access from renderer (even if “easy” for now)
-- [ ] Add “boundary checks” that prevent regressions
-  - [ ] A quick runtime check/log that confirms renderer cannot access Node APIs
-  - [ ] Document where future endpoints must be added (contract-first)
+- [x] Scaffold app using Electron Forge `vite-typescript` template (per architecture doc)
+  - [x] Confirm `contextIsolation: true` and `nodeIntegration: false` (renderer has no Node access)
+  - [x] Confirm renderer builds and loads (dev + packaged build smoke)
+- [x] Add React to the Vite renderer
+  - [x] Add `@vitejs/plugin-react`, `react`, `react-dom`, TypeScript typings
+- [x] Create a typed IPC contract module (single source of truth)
+  - [x] Add `src/shared/ipc/ipc.contract.ts` with Zod schemas for every endpoint (start with a minimal “app:ping”)
+  - [x] Define and enforce the IPC response envelope: `{ ok: true, data } | { ok: false, error: { code, message, details? } }`
+- [x] Implement preload bridge as a minimal typed API surface
+  - [x] Expose typed API via `contextBridge.exposeInMainWorld`
+  - [x] Ensure IPC payloads are structured-clone safe (plain objects only)
+- [x] Add minimal main IPC wiring
+  - [x] Register handlers for the contract endpoints
+  - [x] No direct DB/file access from renderer (even if “easy” for now)
+- [x] Add “boundary checks” that prevent regressions
+  - [x] A quick runtime check/log that confirms renderer cannot access Node APIs
+  - [x] Document where future endpoints must be added (contract-first)
 
 ## Dev Notes
 
@@ -131,12 +131,75 @@ GPT-5.2 (Codex CLI)
 
 ### Debug Log References
 
-- `npm view` was used on 2026-02-09 to capture “latest stable” package versions.
+- `npm init electron-app@latest /tmp/cachify-studio.hFsqVt -- --template=vite-typescript`
+- `npm install`
+- `npm run lint`
+- `npm run make`
+- `timeout 45 npm run start`
 
 ### Completion Notes List
 
-- Ultimate context engine analysis completed — comprehensive developer guide created.
+- Scaffolded Electron Forge Vite TypeScript app from template in temporary directory, then synchronized into project root while preserving BMAD artifacts.
+- Enforced process isolation in `BrowserWindow` with `contextIsolation: true`, `nodeIntegration: false`, and `sandbox: true`.
+- Added React renderer bootstrap and UI (`src/renderer/main.tsx`, `src/renderer/app/App.tsx`) and Vite React plugin configuration.
+- Implemented contract-first IPC with Zod validation and standardized envelope in `src/shared/ipc/ipc.contract.ts` (`app:ping` endpoint).
+- Wired preload typed bridge via `contextBridge.exposeInMainWorld` and `window.api.ping`.
+- Implemented main-process IPC handler registration in `src/main/ipc/register-handlers.ts` and main-domain ping service.
+- Added runtime boundary check log in renderer (`[boundary-check] renderer-node-access=blocked`) and documented future endpoint extension in IPC contract description.
+- Smoke validation completed for packaged build (`npm run make`) and dev start (`timeout 45 npm run start`).
+- No pre-existing unit test runner was present in the starter template; manual verification path was used per story guidance (dev-start smoke + packaged-build smoke).
+- Senior review fixes applied:
+  - Corrected main-window preload target to the actual built preload bundle path.
+  - Added runtime response-envelope validation in main IPC handler for `app:ping`.
+  - Updated toolchain versions to match story baseline (`vite@^7.3.1`, `typescript@~5.9.3`).
+  - Synchronized story `File List` with modified sprint tracking artifact.
 
 ### File List
 
+- `.eslintrc.json`
+- `.gitignore`
+- `forge.config.ts`
+- `forge.env.d.ts`
+- `index.html`
+- `package-lock.json`
+- `package.json`
+- `src/main.ts`
+- `src/main/app/create-main-window.ts`
+- `src/main/app/lifecycle.ts`
+- `src/main/domain/app.service.ts`
+- `src/main/ipc/register-handlers.ts`
+- `src/preload/api.ts`
+- `src/preload/preload.ts`
+- `src/renderer/global.d.ts`
+- `src/renderer/main.tsx`
+- `src/renderer/app/App.tsx`
+- `src/renderer/styles.css`
+- `src/shared/ipc/ipc.contract.ts`
 - `_bmad-output/implementation-artifacts/1-1-initialize-desktop-foundation-and-secure-process-boundaries.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `tsconfig.json`
+- `vite.main.config.ts`
+- `vite.preload.config.ts`
+- `vite.renderer.config.ts`
+
+## Change Log
+
+- 2026-02-09: Completed Story 1.1 implementation, added secure Electron boundaries, React renderer foundation, typed IPC contract/bridge/handler, and successful dev/package smoke validation.
+- 2026-02-09: Senior code review fixes applied (preload path correction, IPC response-envelope enforcement, dependency baseline alignment, and story/sprint tracking synchronization).
+
+## Senior Developer Review (AI)
+
+Date: 2026-02-09  
+Reviewer: Jay
+
+- Outcome: Changes requested issues resolved and verified.
+- High issues fixed:
+  - Corrected preload bundle path in `src/main/app/create-main-window.ts`.
+  - Enforced IPC response envelope validation in `src/main/ipc/register-handlers.ts`.
+- Medium issues fixed:
+  - Story `File List` updated to include `_bmad-output/implementation-artifacts/sprint-status.yaml`.
+  - Toolchain baseline aligned in `package.json`/`package-lock.json` (`vite@^7.3.1`, `typescript@~5.9.3`).
+- Validation rerun after fixes:
+  - `npm run lint` passed.
+  - `npm run make` passed.
+  - `timeout 25 npm run start` passed.
