@@ -41,7 +41,7 @@ story_location: /home/jay/Programming/cachify-studio/_bmad-output/implementation
 development_status:
   epic-1: in-progress
   1-1-initialize-desktop-foundation-and-secure-process-boundaries: done
-  1-2-ui-foundation-tailwind-tokens-base-ui-shadcn-copy-in: backlog
+  1-2-ui-foundation-tailwind-tokens-base-ui-shadcn-copy-in: done
   1-3-create-and-manage-connection-profiles: backlog
   1-4-configure-authentication-and-secure-credential-handling: backlog
   1-5-connect-disconnect-and-switch-sessions-with-status-and-errors: backlog
