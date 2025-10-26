@@ -36,35 +36,90 @@ describe('Story 1.2 UI foundation', () => {
   });
 
   it('renders keyboard-accessible baseline Button and Dialog components', async () => {
+    const ok = <T,>(data: T) => ({ ok: true as const, data });
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: async () => ok([]),
+        search: async () => ok([]),
+        create: async () =>
+          ok({
+            id: '1',
+            name: 'x',
+            kind: 'redis',
+            host: 'h',
+            port: 1,
+            tags: [],
+            favorite: false,
+            createdAt: 'now',
+            updatedAt: 'now',
+          }),
+        update: async () =>
+          ok({
+            id: '1',
+            name: 'x',
+            kind: 'redis',
+            host: 'h',
+            port: 1,
+            tags: [],
+            favorite: false,
+            createdAt: 'now',
+            updatedAt: 'now',
+          }),
+        delete: async () => ok({ id: '1' }),
+        toggleFavorite: async () =>
+          ok({
+            id: '1',
+            name: 'x',
+            kind: 'redis',
+            host: 'h',
+            port: 1,
+            tags: [],
+            favorite: true,
+            createdAt: 'now',
+            updatedAt: 'now',
+          }),
+        setTags: async () =>
+          ok({
+            id: '1',
+            name: 'x',
+            kind: 'redis',
+            host: 'h',
+            port: 1,
+            tags: [],
+            favorite: false,
+            createdAt: 'now',
+            updatedAt: 'now',
+          }),
+      },
+    };
     const user = userEvent.setup();
     render(<App />);
-    const pingButton = screen.getByRole('button', { name: 'Ping main process' });
-    const openDialogButton = screen.getByRole('button', { name: 'Open Dialog' });
+    const newProfileButton = screen.getByRole('button', { name: 'New profile' });
 
     await user.tab();
-    expect(pingButton).toHaveFocus();
+    expect(newProfileButton).toHaveFocus();
     await user.tab();
-    openDialogButton.focus();
+    newProfileButton.focus();
 
-    expect(openDialogButton).toHaveFocus();
-    expect(openDialogButton.className).toContain('focus-visible:ring-2');
+    expect(newProfileButton).toHaveFocus();
+    expect(newProfileButton.className).toContain('focus-visible:ring-2');
 
     await user.keyboard('{Enter}');
 
-    expect(screen.getByRole('dialog', { name: 'Connection diagnostics' })).toBeInTheDocument();
-    const dialogPingButton = screen.getByRole('button', { name: 'Ping from dialog' });
+    expect(screen.getByRole('dialog', { name: 'Create profile' })).toBeInTheDocument();
+    const dialogSaveButton = screen.getByRole('button', { name: 'Create profile' });
     const dialogCloseButton = screen.getByRole('button', { name: 'Close' });
 
-    dialogPingButton.focus();
-    expect(dialogPingButton).toHaveFocus();
+    dialogSaveButton.focus();
+    expect(dialogSaveButton).toHaveFocus();
 
     await user.tab();
     expect(dialogCloseButton).toHaveFocus();
 
     await user.tab();
     const activeElement = document.activeElement as HTMLElement | null;
-    expect(activeElement).not.toBeNull();
-    const dialogElement = screen.getByRole('dialog', { name: 'Connection diagnostics' });
+    const dialogElement = screen.getByRole('dialog', { name: 'Create profile' });
     const focusStayedInDialog =
       (activeElement ? dialogElement.contains(activeElement) : false) ||
       activeElement?.hasAttribute('data-base-ui-focus-guard') === true;
@@ -72,7 +127,7 @@ describe('Story 1.2 UI foundation', () => {
 
     await user.keyboard('{Escape}');
 
-    expect(screen.queryByRole('dialog', { name: 'Connection diagnostics' })).not.toBeInTheDocument();
-    expect(openDialogButton).toHaveFocus();
+    expect(screen.queryByRole('dialog', { name: 'Create profile' })).not.toBeInTheDocument();
+    expect(newProfileButton).toHaveFocus();
   });
 });

@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import started from 'electron-squirrel-startup';
 import { createMainWindow } from './create-main-window';
 import { registerIpcHandlers } from '../ipc/register-handlers';
+import { initializePersistence } from '../domain/persistence/db/connection';
 
 export const startAppLifecycle = () => {
   if (started) {
@@ -9,7 +10,8 @@ export const startAppLifecycle = () => {
     return;
   }
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
+    await initializePersistence();
     registerIpcHandlers();
     createMainWindow();
 

@@ -1,16 +1,7 @@
-import { Button } from '@/renderer/components/ui/button'
-import {
-	Dialog,
-	DialogContent,
-	DialogDescription,
-	DialogHeader,
-	DialogTitle,
-	DialogTrigger,
-} from '@/renderer/components/ui/dialog'
 import { useEffect, useState } from 'react'
+import { ProfilesPage } from '@/renderer/features/profiles/ProfilesPage'
 
 export const App = () => {
-	const [pingResult, setPingResult] = useState('Waiting for ping')
 	const [boundaryState, setBoundaryState] = useState('checking')
 
 	useEffect(() => {
@@ -28,56 +19,22 @@ export const App = () => {
 		)
 	}, [])
 
-	const runPing = async () => {
-		try {
-			const response = await window.api.ping({ clientTime: Date.now() })
-
-			if ('error' in response) {
-				setPingResult(`error: ${response.error.code} (${response.error.message})`)
-				return
-			}
-
-			setPingResult(`pong @ ${new Date(response.data.serverTime).toISOString()}`)
-		} catch (error) {
-			const message =
-				error instanceof Error ? error.message : 'unknown ping failure'
-			setPingResult(`error: IPC_FAILURE (${message})`)
-		}
-	}
-
 	return (
-		<main className='app-shell'>
-			<h1>Cachify Studio</h1>
-			<p className='app-caption'>
-				Secure desktop foundation with contract-first IPC and tokenized UI
-				primitives.
-			</p>
-			<div className='app-row'>
-				<p className='app-caption'>Boundary check: {boundaryState}</p>
-				<span className='safety-chip'>Read-only default</span>
-			</div>
-			<div className='app-row'>
-				<Button onClick={runPing}>Ping main process</Button>
-				{pingResult && (
-					<p className='app-caption'>Last ping result: {pingResult}</p>
-				)}
+		<main className='flex min-h-screen flex-col gap-8 bg-background px-6 py-8 text-foreground'>
+			<header className='flex flex-col gap-2'>
+				<h1 className='text-3xl font-semibold'>Cachify Studio</h1>
+				<p className='text-sm text-muted-foreground'>
+					Connections-first cache explorer with contract-first IPC boundaries.
+				</p>
+				<div className='flex items-center gap-3 text-xs text-muted-foreground'>
+					<span>Boundary check: {boundaryState}</span>
+					<span className='rounded-full border border-border bg-muted px-2 py-1 uppercase tracking-wide'>
+						Read-only default
+					</span>
+				</div>
+			</header>
 
-				<Dialog>
-					<DialogTrigger render={<Button />}>Open Dialog</DialogTrigger>
-					<DialogContent>
-						<DialogHeader>
-							<DialogTitle>Connection diagnostics</DialogTitle>
-							<DialogDescription>
-								Keyboard-first dialog behavior and semantic focus styling are enabled.
-							</DialogDescription>
-						</DialogHeader>
-						<p className='app-caption'>Last ping result: {pingResult}</p>
-						<Button variant='secondary' onClick={runPing}>
-							Ping from dialog
-						</Button>
-					</DialogContent>
-				</Dialog>
-			</div>
+			<ProfilesPage />
 		</main>
 	)
 }
