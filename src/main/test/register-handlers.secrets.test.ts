@@ -1,6 +1,13 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { profilesCreateChannel, profilesCreateResponseSchema, profilesListChannel, profilesListResponseSchema } from '../../shared/ipc/ipc.contract';
+import {
+  profileSecretsLoadChannel,
+  profileSecretsLoadResponseSchema,
+  profileSecretsSaveChannel,
+  profileSecretsSaveResponseSchema,
+  profileSecretsStorageStatusChannel,
+  profileSecretsStorageStatusResponseSchema,
+} from '../../shared/ipc/ipc.contract';
 
 const mocks = vi.hoisted(() => {
   const handlers = new Map<string, (...args: unknown[]) => Promise<unknown>>();
@@ -9,7 +16,7 @@ const mocks = vi.hoisted(() => {
     ipcMainHandle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
       handlers.set(channel, handler);
     }),
-    getPersistenceStatus: vi.fn(),
+    getPersistenceStatus: vi.fn(() => ({ ready: true })),
     profilesService: {
       list: vi.fn(),
       create: vi.fn(),
@@ -115,42 +122,70 @@ vi.mock('../domain/app.service', () => ({
   getPingPayload: () => ({ pong: 'pong', serverTime: Date.now() }),
 }));
 
-describe('registerIpcHandlers persistence gating', () => {
+describe('registerIpcHandlers secret channels', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mocks.handlers.clear();
-    mocks.getPersistenceStatus.mockReturnValue({
-      ready: false,
-      code: 'PERSISTENCE_INIT_FAILED',
-      diagnosticId: 'diag-test',
-    });
     const mod = await import('../ipc/register-handlers');
     mod.registerIpcHandlers();
   });
 
-  it('returns persistence envelope for profiles:list when persistence is unavailable', async () => {
-    const handler = mocks.handlers.get(profilesListChannel);
-    expect(handler).toBeDefined();
+  it('returns storage capability envelope', async () => {
+    mocks.profileSecrets.getStorageStatus.mockReturnValue({
+      backend: 'kwallet',
+      canPersistCredentials: true,
+    });
+    const handler = mocks.handlers.get(profileSecretsStorageStatusChannel);
     const response = await handler?.({}, {});
-
-    const parsed = profilesListResponseSchema.safeParse(response);
+    const parsed = profileSecretsStorageStatusResponseSchema.safeParse(response);
     expect(parsed.success).toBe(true);
-    if (parsed.success && 'error' in parsed.data) {
-      expect(parsed.data.error.code).toBe('PERSISTENCE_INIT_FAILED');
+    if (parsed.success && 'data' in parsed.data) {
+      expect(parsed.data.data.backend).toBe('kwallet');
     }
   });
 
-  it('returns persistence envelope for profiles:create when persistence is unavailable', async () => {
-    const handler = mocks.handlers.get(profilesCreateChannel);
-    expect(handler).toBeDefined();
-    const response = await handler?.({}, {
-      profile: { name: 'Prod', kind: 'redis', host: 'localhost', port: 6379 },
+  it('returns save error envelope for disabled credential persistence', async () => {
+    mocks.profileSecrets.save.mockReturnValue({
+      ok: false,
+      error: {
+        code: 'CREDENTIAL_SAVE_DISABLED',
+        message: 'Use prompt every session.',
+      },
     });
-
-    const parsed = profilesCreateResponseSchema.safeParse(response);
+    const handler = mocks.handlers.get(profileSecretsSaveChannel);
+    const response = await handler?.({}, {
+      profileId: '11111111-1111-4111-8111-111111111111',
+      type: 'redis',
+      secret: { password: 'x' },
+    });
+    const parsed = profileSecretsSaveResponseSchema.safeParse(response);
     expect(parsed.success).toBe(true);
     if (parsed.success && 'error' in parsed.data) {
-      expect(parsed.data.error.code).toBe('PERSISTENCE_INIT_FAILED');
+      expect(parsed.data.error.code).toBe('CREDENTIAL_SAVE_DISABLED');
+    }
+  });
+
+  it('loads credentials from secure store envelope', async () => {
+    mocks.profileSecrets.load.mockReturnValue({
+      ok: true,
+      data: {
+        profileId: '11111111-1111-4111-8111-111111111111',
+        type: 'redis',
+        secret: {
+          username: 'default',
+          password: 'top-secret',
+        },
+      },
+    });
+    const handler = mocks.handlers.get(profileSecretsLoadChannel);
+    const response = await handler?.({}, {
+      profileId: '11111111-1111-4111-8111-111111111111',
+      type: 'redis',
+    });
+    const parsed = profileSecretsLoadResponseSchema.safeParse(response);
+    expect(parsed.success).toBe(true);
+    if (parsed.success && 'data' in parsed.data) {
+      expect(parsed.data.data.secret.password).toBe('top-secret');
     }
   });
 });

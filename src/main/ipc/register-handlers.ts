@@ -1,8 +1,39 @@
-import { ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
 	appPingChannel,
 	appPingRequestSchema,
 	appPingResponseSchema,
+	connectionsConnectChannel,
+	connectionsConnectRequestSchema,
+	connectionsConnectResponseSchema,
+	connectionsDisconnectChannel,
+	connectionsDisconnectRequestSchema,
+	connectionsDisconnectResponseSchema,
+	connectionsStatusChangedEventChannel,
+	connectionsStatusGetChannel,
+	connectionsStatusGetRequestSchema,
+	connectionsStatusGetResponseSchema,
+	connectionsSwitchChannel,
+	connectionsSwitchRequestSchema,
+	connectionsSwitchResponseSchema,
+	mutationsRelockChannel,
+	mutationsRelockRequestSchema,
+	mutationsRelockResponseSchema,
+	mutationsUnlockChannel,
+	mutationsUnlockRequestSchema,
+	mutationsUnlockResponseSchema,
+	profileSecretsDeleteChannel,
+	profileSecretsDeleteRequestSchema,
+	profileSecretsDeleteResponseSchema,
+	profileSecretsLoadChannel,
+	profileSecretsLoadRequestSchema,
+	profileSecretsLoadResponseSchema,
+	profileSecretsSaveChannel,
+	profileSecretsSaveRequestSchema,
+	profileSecretsSaveResponseSchema,
+	profileSecretsStorageStatusChannel,
+	profileSecretsStorageStatusRequestSchema,
+	profileSecretsStorageStatusResponseSchema,
 	profilesCreateChannel,
 	profilesCreateRequestSchema,
 	profilesCreateResponseSchema,
@@ -25,6 +56,16 @@ import {
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
 	type AppPingResponse,
+	type ConnectionsConnectResponse,
+	type ConnectionsDisconnectResponse,
+	type ConnectionsStatusGetResponse,
+	type ConnectionsSwitchResponse,
+	type MutationsRelockResponse,
+	type MutationsUnlockResponse,
+	type ProfileSecretsDeleteResponse,
+	type ProfileSecretsLoadResponse,
+	type ProfileSecretsSaveResponse,
+	type ProfileSecretsStorageStatusResponse,
 	type ProfilesCreateResponse,
 	type ProfilesDeleteResponse,
 	type ProfilesListResponse,
@@ -34,8 +75,10 @@ import {
 	type ProfilesUpdateResponse,
 } from '../../shared/ipc/ipc.contract'
 import { getPingPayload } from '../domain/app.service'
+import { connectionSessionService } from '../domain/cache/session/connection-session.service'
 import { getPersistenceStatus } from '../domain/persistence/db/connection'
 import { profilesService } from '../domain/persistence/services/connection-profiles.service'
+import { profileSecrets } from '../domain/security/secrets'
 
 const normalizeDetails = (value: unknown): unknown => {
 	if (
@@ -79,6 +122,13 @@ const persistenceUnavailableEnvelope = () => {
 const ensurePersistenceReady = () => {
 	const status = getPersistenceStatus()
 	return status.ready
+}
+
+const publishConnectionStatus = () => {
+	const snapshot = connectionSessionService.getStatus()
+	BrowserWindow.getAllWindows().forEach((window) => {
+		window.webContents.send(connectionsStatusChangedEventChannel, snapshot)
+	})
 }
 
 const queryFailureEnvelope = (
@@ -411,6 +461,243 @@ const handleProfilesSetTags = async (
 	}
 }
 
+const handleProfileSecretsStorageStatus = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ProfileSecretsStorageStatusResponse> => {
+	const parsed = profileSecretsStorageStatusRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for profileSecrets:storageStatus',
+			parsed.error.flatten(),
+		) as ProfileSecretsStorageStatusResponse
+	}
+
+	return ensureResponseEnvelope(
+		profileSecretsStorageStatusResponseSchema,
+		{ ok: true, data: profileSecrets.getStorageStatus() },
+		'Invalid profileSecrets:storageStatus response envelope',
+	)
+}
+
+const handleProfileSecretsSave = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ProfileSecretsSaveResponse> => {
+	const parsed = profileSecretsSaveRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for profileSecrets:save',
+			parsed.error.flatten(),
+		) as ProfileSecretsSaveResponse
+	}
+
+	const result = profileSecrets.save(parsed.data)
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as ProfileSecretsSaveResponse
+	}
+	return ensureResponseEnvelope(
+		profileSecretsSaveResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid profileSecrets:save response envelope',
+	)
+}
+
+const handleProfileSecretsLoad = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ProfileSecretsLoadResponse> => {
+	const parsed = profileSecretsLoadRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for profileSecrets:load',
+			parsed.error.flatten(),
+		) as ProfileSecretsLoadResponse
+	}
+
+	const result = profileSecrets.load(parsed.data)
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as ProfileSecretsLoadResponse
+	}
+	return ensureResponseEnvelope(
+		profileSecretsLoadResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid profileSecrets:load response envelope',
+	)
+}
+
+const handleProfileSecretsDelete = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ProfileSecretsDeleteResponse> => {
+	const parsed = profileSecretsDeleteRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for profileSecrets:delete',
+			parsed.error.flatten(),
+		) as ProfileSecretsDeleteResponse
+	}
+
+	const result = profileSecrets.delete(parsed.data)
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as ProfileSecretsDeleteResponse
+	}
+	return ensureResponseEnvelope(
+		profileSecretsDeleteResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid profileSecrets:delete response envelope',
+	)
+}
+
+const handleConnectionsConnect = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ConnectionsConnectResponse> => {
+	const parsed = connectionsConnectRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for connections:connect',
+			parsed.error.flatten(),
+		) as ConnectionsConnectResponse
+	}
+
+	const result = await connectionSessionService.connect(
+		parsed.data.profileId,
+		parsed.data.runtimeCredentials,
+	)
+	publishConnectionStatus()
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as ConnectionsConnectResponse
+	}
+	return ensureResponseEnvelope(
+		connectionsConnectResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid connections:connect response envelope',
+	)
+}
+
+const handleConnectionsDisconnect = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ConnectionsDisconnectResponse> => {
+	const parsed = connectionsDisconnectRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for connections:disconnect',
+			parsed.error.flatten(),
+		) as ConnectionsDisconnectResponse
+	}
+
+	const result = await connectionSessionService.disconnect()
+	publishConnectionStatus()
+	return ensureResponseEnvelope(
+		connectionsDisconnectResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid connections:disconnect response envelope',
+	)
+}
+
+const handleConnectionsSwitch = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ConnectionsSwitchResponse> => {
+	const parsed = connectionsSwitchRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for connections:switch',
+			parsed.error.flatten(),
+		) as ConnectionsSwitchResponse
+	}
+
+	const result = await connectionSessionService.switch(
+		parsed.data.profileId,
+		parsed.data.runtimeCredentials,
+	)
+	publishConnectionStatus()
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as ConnectionsSwitchResponse
+	}
+	return ensureResponseEnvelope(
+		connectionsSwitchResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid connections:switch response envelope',
+	)
+}
+
+const handleConnectionsStatusGet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ConnectionsStatusGetResponse> => {
+	const parsed = connectionsStatusGetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for connections:status:get',
+			parsed.error.flatten(),
+		) as ConnectionsStatusGetResponse
+	}
+	return ensureResponseEnvelope(
+		connectionsStatusGetResponseSchema,
+		{ ok: true, data: connectionSessionService.getStatus() },
+		'Invalid connections:status:get response envelope',
+	)
+}
+
+const handleMutationsUnlock = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<MutationsUnlockResponse> => {
+	const parsed = mutationsUnlockRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for mutations:unlock',
+			parsed.error.flatten(),
+		) as MutationsUnlockResponse
+	}
+	const result = await connectionSessionService.unlockMutations(
+		parsed.data.confirmation,
+		parsed.data.reason,
+	)
+	publishConnectionStatus()
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as MutationsUnlockResponse
+	}
+	return ensureResponseEnvelope(
+		mutationsUnlockResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid mutations:unlock response envelope',
+	)
+}
+
+const handleMutationsRelock = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<MutationsRelockResponse> => {
+	const parsed = mutationsRelockRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for mutations:relock',
+			parsed.error.flatten(),
+		) as MutationsRelockResponse
+	}
+	const result = await connectionSessionService.relockMutations()
+	publishConnectionStatus()
+	return ensureResponseEnvelope(
+		mutationsRelockResponseSchema,
+		{ ok: true, data: result.data },
+		'Invalid mutations:relock response envelope',
+	)
+}
+
 export const registerIpcHandlers = () => {
 	ipcMain.handle(appPingChannel, handlePing)
 	ipcMain.handle(profilesListChannel, handleProfilesList)
@@ -420,4 +707,14 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(profilesDeleteChannel, handleProfilesDelete)
 	ipcMain.handle(profilesToggleFavoriteChannel, handleProfilesToggleFavorite)
 	ipcMain.handle(profilesSetTagsChannel, handleProfilesSetTags)
+	ipcMain.handle(profileSecretsStorageStatusChannel, handleProfileSecretsStorageStatus)
+	ipcMain.handle(profileSecretsSaveChannel, handleProfileSecretsSave)
+	ipcMain.handle(profileSecretsLoadChannel, handleProfileSecretsLoad)
+	ipcMain.handle(profileSecretsDeleteChannel, handleProfileSecretsDelete)
+	ipcMain.handle(connectionsConnectChannel, handleConnectionsConnect)
+	ipcMain.handle(connectionsDisconnectChannel, handleConnectionsDisconnect)
+	ipcMain.handle(connectionsSwitchChannel, handleConnectionsSwitch)
+	ipcMain.handle(connectionsStatusGetChannel, handleConnectionsStatusGet)
+	ipcMain.handle(mutationsUnlockChannel, handleMutationsUnlock)
+	ipcMain.handle(mutationsRelockChannel, handleMutationsRelock)
 }
