@@ -14,6 +14,8 @@ import {
   setProfileFavorite,
   setProfileTags,
   updateProfile,
+  updateProfileAuthSettings,
+  getProfileById,
 } from '../repositories/connection-profiles.repository';
 
 const normalizeTags = (tags: string[]) =>
@@ -50,6 +52,11 @@ export const profilesService = {
       kind: payload.kind,
       host: payload.host,
       port: payload.port,
+      environment: payload.environment,
+      credentialPolicy: payload.credentialPolicy,
+      redisAuth: payload.redisAuth,
+      redisTls: payload.redisTls,
+      memcachedAuth: payload.memcachedAuth,
       favorite: payload.favorite ?? false,
       tags: normalizeTags(payload.tags ?? []),
       createdAt: now,
@@ -63,13 +70,69 @@ export const profilesService = {
       return { ok: false as const, error: parsed.error };
     }
     const now = new Date().toISOString();
-    const updatePayload = Object.fromEntries(
+    const db = getDatabase();
+    const existing = getProfileById(db, id);
+    if (!existing) {
+      return { ok: true as const, data: null };
+    }
+
+    const {
+      name,
+      kind,
+      host,
+      port,
+      environment,
+      credentialPolicy,
+      redisAuth,
+      redisTls,
+      memcachedAuth,
+    } = parsed.data;
+    const mergedValidation = profileCreateSchema.safeParse({
+      name: name ?? existing.name,
+      kind: kind ?? existing.kind,
+      host: host ?? existing.host,
+      port: port ?? existing.port,
+      environment: environment ?? existing.environment,
+      credentialPolicy: credentialPolicy ?? existing.credentialPolicy,
+      redisAuth: redisAuth ?? existing.redisAuth,
+      redisTls: redisTls ?? existing.redisTls,
+      memcachedAuth: memcachedAuth ?? existing.memcachedAuth,
+      favorite: existing.favorite,
+      tags: existing.tags,
+    });
+    if (!mergedValidation.success) {
+      return { ok: false as const, error: mergedValidation.error };
+    }
+
+    const basePatch = Object.fromEntries(
       Object.entries({
-        ...parsed.data,
+        ...(name !== undefined ? { name } : {}),
+        ...(kind !== undefined ? { kind } : {}),
+        ...(host !== undefined ? { host } : {}),
+        ...(port !== undefined ? { port } : {}),
+        ...(environment !== undefined ? { environment } : {}),
         updatedAt: now,
-      }).filter(([, value]) => value !== undefined),
+      }),
     );
-    const updated = await updateProfile(getDatabase(), id, updatePayload);
+    const updatedBase = await updateProfile(db, id, basePatch);
+    if (!updatedBase) {
+      return { ok: true as const, data: null };
+    }
+    const shouldUpdateAuthSettings =
+      redisAuth !== undefined
+      || redisTls !== undefined
+      || memcachedAuth !== undefined
+      || credentialPolicy !== undefined;
+    if (!shouldUpdateAuthSettings) {
+      return { ok: true as const, data: updatedBase };
+    }
+    const updated = await updateProfileAuthSettings(db, id, {
+      ...(credentialPolicy !== undefined ? { credentialPolicy } : {}),
+      ...(redisAuth !== undefined ? { redisAuth } : {}),
+      ...(redisTls !== undefined ? { redisTls } : {}),
+      ...(memcachedAuth !== undefined ? { memcachedAuth } : {}),
+      updatedAt: now,
+    });
     return { ok: true as const, data: updated };
   },
   delete: async (id: string) => {

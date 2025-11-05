@@ -23,6 +23,11 @@ describe('connection profiles repository', () => {
       kind: 'redis',
       host: 'prod.cache.local',
       port: 6379,
+      environment: 'local',
+      credentialPolicy: 'save',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
       favorite: false,
       tags: ['prod', 'payments'],
       createdAt: now,
@@ -46,6 +51,11 @@ describe('connection profiles repository', () => {
       kind: 'redis',
       host: 'prod.cache.local',
       port: 6379,
+      environment: 'local',
+      credentialPolicy: 'save',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
       favorite: false,
       tags: ['prod', 'payments'],
       createdAt: now,
@@ -57,6 +67,11 @@ describe('connection profiles repository', () => {
       kind: 'redis',
       host: 'qa.cache.local',
       port: 6380,
+      environment: 'local',
+      credentialPolicy: 'save',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
       favorite: false,
       tags: ['qa'],
       createdAt: now,
@@ -115,5 +130,43 @@ describe('connection profiles repository', () => {
       tags: [],
     });
     expect(parsed.success).toBe(false);
+  });
+
+  it('does not persist secret password fields in SQLite rows', async () => {
+    const { db, sqlite } = createTestDatabase();
+    const now = new Date().toISOString();
+
+    await createProfile(db, {
+      id: 'profile-secret',
+      name: 'Secret Redis',
+      kind: 'redis',
+      host: 'secret.cache.local',
+      port: 6379,
+      environment: 'local',
+      credentialPolicy: 'save',
+      redisAuth: { mode: 'password', username: 'default', hasPassword: true },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      favorite: false,
+      tags: [],
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const columns = sqlite.prepare('PRAGMA table_info(connection_profiles)').all() as Array<{
+      name: string;
+    }>;
+    expect(columns.some((column) => column.name === 'password')).toBe(false);
+    expect(columns.some((column) => column.name === 'redis_auth_password')).toBe(false);
+
+    const row = sqlite
+      .prepare('SELECT * FROM connection_profiles WHERE id = ?')
+      .get('profile-secret') as Record<string, unknown>;
+    expect(Object.keys(row)).toContain('redis_auth_has_password');
+    expect(Object.keys(row)).toContain('memcached_auth_has_password');
+    expect(Object.keys(row).some((key) => key === 'redis_auth_password')).toBe(false);
+    expect(Object.keys(row).some((key) => key === 'memcached_auth_password')).toBe(false);
+
+    sqlite.close();
   });
 });

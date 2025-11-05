@@ -31,6 +31,32 @@ const migrations: Migration[] = [
         ON connection_profile_tags(tag);
     `,
   },
+  {
+    id: '0002_add_profile_auth_metadata',
+    sql: `
+      ALTER TABLE connection_profiles ADD COLUMN credential_policy TEXT NOT NULL DEFAULT 'save';
+      ALTER TABLE connection_profiles ADD COLUMN redis_auth_mode TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE connection_profiles ADD COLUMN redis_auth_username TEXT;
+      ALTER TABLE connection_profiles ADD COLUMN redis_auth_has_password INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE connection_profiles ADD COLUMN memcached_auth_mode TEXT NOT NULL DEFAULT 'none';
+      ALTER TABLE connection_profiles ADD COLUMN memcached_auth_username TEXT;
+      ALTER TABLE connection_profiles ADD COLUMN memcached_auth_has_password INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
+  {
+    id: '0003_add_redis_tls_metadata',
+    sql: `
+      ALTER TABLE connection_profiles ADD COLUMN redis_tls_enabled INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE connection_profiles ADD COLUMN redis_tls_servername TEXT;
+      ALTER TABLE connection_profiles ADD COLUMN redis_tls_ca_path TEXT;
+    `,
+  },
+  {
+    id: '0004_add_environment_label',
+    sql: `
+      ALTER TABLE connection_profiles ADD COLUMN environment_label TEXT NOT NULL DEFAULT 'local';
+    `,
+  },
 ];
 
 type SqliteDatabaseInstance = InstanceType<typeof SqliteDatabase>;

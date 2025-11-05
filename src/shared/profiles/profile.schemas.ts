@@ -17,8 +17,41 @@ export const profilePortSchema = z
 export const profileTagSchema = z.string().trim().min(1, 'Tag cannot be empty').max(32);
 
 export const profileTagsSchema = z.array(profileTagSchema).max(12).default([]);
+export const profileEnvironmentSchema = z.enum(['local', 'staging', 'prod']);
 
-export const profileCreateSchema = z
+export const credentialPolicySchema = z.enum(['save', 'promptEverySession']);
+
+export const redisAuthModeSchema = z.enum(['none', 'password']);
+export const memcachedAuthModeSchema = z.enum(['none', 'sasl']);
+
+export const redisAuthConfigSchema = z
+  .object({
+    mode: redisAuthModeSchema.default('none'),
+    username: z.string().trim().max(128).optional(),
+    hasPassword: z.boolean().optional().default(false),
+  })
+  .strict()
+  .default({ mode: 'none', hasPassword: false });
+
+export const memcachedAuthConfigSchema = z
+  .object({
+    mode: memcachedAuthModeSchema.default('none'),
+    username: z.string().trim().max(128).optional(),
+    hasPassword: z.boolean().optional().default(false),
+  })
+  .strict()
+  .default({ mode: 'none', hasPassword: false });
+
+export const redisTlsConfigSchema = z
+  .object({
+    enabled: z.boolean().default(false),
+    servername: z.string().trim().max(255).optional(),
+    caPath: z.string().trim().max(1024).optional(),
+  })
+  .strict()
+  .default({ enabled: false });
+
+const profileBaseSchema = z
   .object({
     name: profileNameSchema,
     kind: profileKindSchema,
@@ -26,17 +59,47 @@ export const profileCreateSchema = z
     port: profilePortSchema,
     tags: profileTagsSchema.optional(),
     favorite: z.boolean().optional(),
+    environment: profileEnvironmentSchema.default('local'),
+    credentialPolicy: credentialPolicySchema.default('save'),
+    redisAuth: redisAuthConfigSchema,
+    redisTls: redisTlsConfigSchema,
+    memcachedAuth: memcachedAuthConfigSchema,
   })
   .strict();
+
+export const profileCreateSchema = profileBaseSchema
+  .superRefine((value, ctx) => {
+    if (value.kind === 'memcached' && value.redisTls.enabled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['redisTls', 'enabled'],
+        message: 'Redis TLS settings are only supported for Redis profiles.',
+      });
+    }
+  });
 
 export const profileUpdatePatchSchema = z
   .object({
     name: profileNameSchema.optional(),
     kind: profileKindSchema.optional(),
+    environment: profileEnvironmentSchema.optional(),
     host: profileHostSchema.optional(),
     port: profilePortSchema.optional(),
+    credentialPolicy: credentialPolicySchema.optional(),
+    redisAuth: redisAuthConfigSchema.optional(),
+    redisTls: redisTlsConfigSchema.optional(),
+    memcachedAuth: memcachedAuthConfigSchema.optional(),
   })
   .strict()
+  .superRefine((value, ctx) => {
+    if (value.kind === 'memcached' && value.redisTls?.enabled) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['redisTls', 'enabled'],
+        message: 'Redis TLS settings are only supported for Redis profiles.',
+      });
+    }
+  })
   .refine((value) => Object.keys(value).length > 0, {
     message: 'At least one field must be provided',
   });
@@ -69,7 +132,7 @@ export const profileSearchSchema = z
   })
   .strict();
 
-export const connectionProfileSchema = profileCreateSchema.extend({
+export const connectionProfileSchema = profileBaseSchema.extend({
   id: profileIdSchema,
   tags: profileTagsSchema,
   favorite: z.boolean(),

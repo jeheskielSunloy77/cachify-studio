@@ -5,8 +5,10 @@ const mocks = vi.hoisted(() => ({
   getDatabase: vi.fn(() => ({ __db: true })),
   listProfiles: vi.fn(),
   searchProfiles: vi.fn(),
+  getProfileById: vi.fn(),
   createProfile: vi.fn(),
   updateProfile: vi.fn(),
+  updateProfileAuthSettings: vi.fn(),
   deleteProfile: vi.fn(),
   setProfileTags: vi.fn(),
   setProfileFavorite: vi.fn(),
@@ -20,8 +22,10 @@ vi.mock('../domain/persistence/db/connection', () => ({
 vi.mock('../domain/persistence/repositories/connection-profiles.repository', () => ({
   listProfiles: mocks.listProfiles,
   searchProfiles: mocks.searchProfiles,
+  getProfileById: mocks.getProfileById,
   createProfile: mocks.createProfile,
   updateProfile: mocks.updateProfile,
+  updateProfileAuthSettings: mocks.updateProfileAuthSettings,
   deleteProfile: mocks.deleteProfile,
   setProfileTags: mocks.setProfileTags,
   setProfileFavorite: mocks.setProfileFavorite,
@@ -84,5 +88,32 @@ describe('connection profiles service', () => {
     if (!result.ok) {
       expect(result.error.code).toBe('NOT_FOUND');
     }
+  });
+
+  it('rejects update when merged profile state violates kind/tls constraints', async () => {
+    mocks.getProfileById.mockReturnValue({
+      id: 'profile-1',
+      name: 'Memcached QA',
+      kind: 'memcached',
+      host: 'qa.cache.local',
+      port: 11211,
+      environment: 'staging',
+      credentialPolicy: 'save',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      favorite: false,
+      tags: ['qa'],
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+
+    const result = await profilesService.update('profile-1', {
+      redisTls: { enabled: true },
+    });
+
+    expect(result.ok).toBe(false);
+    expect(mocks.updateProfile).not.toHaveBeenCalled();
+    expect(mocks.updateProfileAuthSettings).not.toHaveBeenCalled();
   });
 });

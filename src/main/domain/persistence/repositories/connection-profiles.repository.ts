@@ -14,6 +14,23 @@ const mapProfileRow = (row: typeof connectionProfiles.$inferSelect): ConnectionP
   kind: row.kind as ConnectionProfile['kind'],
   host: row.host,
   port: row.port,
+  environment: row.environment as ConnectionProfile['environment'],
+  credentialPolicy: row.credentialPolicy as ConnectionProfile['credentialPolicy'],
+  redisAuth: {
+    mode: row.redisAuthMode as ConnectionProfile['redisAuth']['mode'],
+    ...(row.redisAuthUsername ? { username: row.redisAuthUsername } : {}),
+    hasPassword: row.redisAuthHasPassword,
+  },
+  redisTls: {
+    enabled: row.redisTlsEnabled,
+    ...(row.redisTlsServername ? { servername: row.redisTlsServername } : {}),
+    ...(row.redisTlsCaPath ? { caPath: row.redisTlsCaPath } : {}),
+  },
+  memcachedAuth: {
+    mode: row.memcachedAuthMode as ConnectionProfile['memcachedAuth']['mode'],
+    ...(row.memcachedAuthUsername ? { username: row.memcachedAuthUsername } : {}),
+    hasPassword: row.memcachedAuthHasPassword,
+  },
   favorite: row.favorite,
   tags: [],
   createdAt: row.createdAt,
@@ -80,6 +97,17 @@ export const createProfile = (
       kind: payload.kind,
       host: payload.host,
       port: payload.port,
+      environment: payload.environment,
+      credentialPolicy: payload.credentialPolicy,
+      redisAuthMode: payload.redisAuth.mode,
+      redisAuthUsername: payload.redisAuth.username ?? null,
+      redisAuthHasPassword: payload.redisAuth.hasPassword ?? false,
+      redisTlsEnabled: payload.redisTls.enabled,
+      redisTlsServername: payload.redisTls.servername ?? null,
+      redisTlsCaPath: payload.redisTls.caPath ?? null,
+      memcachedAuthMode: payload.memcachedAuth.mode,
+      memcachedAuthUsername: payload.memcachedAuth.username ?? null,
+      memcachedAuthHasPassword: payload.memcachedAuth.hasPassword ?? false,
       favorite: payload.favorite,
       createdAt: payload.createdAt,
       updatedAt: payload.updatedAt,
@@ -101,13 +129,55 @@ export const createProfile = (
 export const updateProfile = (
   db: SqliteDrizzleDatabase,
   id: string,
-  patch: Partial<Omit<ConnectionProfileRecord, 'id' | 'tags' | 'createdAt'>>,
+  patch: Partial<Omit<ConnectionProfileRecord, 'id' | 'tags' | 'createdAt' | 'redisAuth' | 'memcachedAuth'>>,
 ) => {
   db
     .update(connectionProfiles)
     .set({
       ...patch,
     })
+    .where(eq(connectionProfiles.id, id))
+    .run();
+  return getProfileById(db, id);
+};
+
+export const updateProfileAuthSettings = (
+  db: SqliteDrizzleDatabase,
+  id: string,
+  authPatch: {
+    credentialPolicy?: ConnectionProfile['credentialPolicy'];
+    redisAuth?: ConnectionProfile['redisAuth'];
+    redisTls?: ConnectionProfile['redisTls'];
+    memcachedAuth?: ConnectionProfile['memcachedAuth'];
+    updatedAt: string;
+  },
+) => {
+  const setPayload: Partial<typeof connectionProfiles.$inferInsert> = {
+    updatedAt: authPatch.updatedAt,
+  };
+
+  if (authPatch.credentialPolicy !== undefined) {
+    setPayload.credentialPolicy = authPatch.credentialPolicy;
+  }
+  if (authPatch.redisAuth !== undefined) {
+    setPayload.redisAuthMode = authPatch.redisAuth.mode;
+    setPayload.redisAuthUsername = authPatch.redisAuth.username ?? null;
+    setPayload.redisAuthHasPassword = authPatch.redisAuth.hasPassword ?? false;
+  }
+  if (authPatch.redisTls !== undefined) {
+    setPayload.redisTlsEnabled = authPatch.redisTls.enabled;
+    setPayload.redisTlsServername = authPatch.redisTls.servername ?? null;
+    setPayload.redisTlsCaPath = authPatch.redisTls.caPath ?? null;
+  }
+  if (authPatch.memcachedAuth !== undefined) {
+    setPayload.memcachedAuthMode = authPatch.memcachedAuth.mode;
+    setPayload.memcachedAuthUsername = authPatch.memcachedAuth.username ?? null;
+    setPayload.memcachedAuthHasPassword = authPatch.memcachedAuth.hasPassword ?? false;
+  }
+
+  db
+    .update(connectionProfiles)
+    .set(setPayload)
     .where(eq(connectionProfiles.id, id))
     .run();
   return getProfileById(db, id);
