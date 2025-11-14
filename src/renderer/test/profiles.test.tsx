@@ -6,15 +6,29 @@ import type {
   ConnectionProfile,
   ConnectionProfileCreateInput,
 } from '@/shared/profiles/profile.schemas';
+import type { RendererApi } from '@/preload/api';
 
 let profileCounter = 0;
 const buildProfile = (overrides: Partial<ConnectionProfile> = {}): ConnectionProfile => ({
   id: `id-${++profileCounter}`,
   name: 'Profile',
   kind: 'redis',
+  environment: 'local',
   host: 'cache.local',
   port: 6379,
   tags: [] as string[],
+  credentialPolicy: 'save',
+  redisAuth: {
+    mode: 'none',
+    hasPassword: false,
+  },
+  redisTls: {
+    enabled: false,
+  },
+  memcachedAuth: {
+    mode: 'none',
+    hasPassword: false,
+  },
   favorite: false,
   createdAt: 'now',
   updatedAt: 'now',
@@ -22,6 +36,127 @@ const buildProfile = (overrides: Partial<ConnectionProfile> = {}): ConnectionPro
 });
 
 const ok = <T,>(data: T) => ({ ok: true as const, data });
+const buildProfileSecretsApi = (
+  overrides?: Partial<RendererApi['profileSecrets']>,
+): RendererApi['profileSecrets'] => ({
+  storageStatus: vi.fn(async () =>
+    ok({
+      backend: 'kwallet',
+      canPersistCredentials: true,
+    }),
+  ),
+  save: vi.fn(async () =>
+    ok({ profileId: '11111111-1111-4111-8111-111111111111', type: 'redis' as const }),
+  ),
+  load: vi.fn(async () =>
+    ok({
+      profileId: '11111111-1111-4111-8111-111111111111',
+      type: 'redis' as const,
+      secret: { password: 'redacted' },
+    }),
+  ),
+  delete: vi.fn(async () =>
+    ok({ profileId: '11111111-1111-4111-8111-111111111111', type: 'redis' as const }),
+  ),
+  ...overrides,
+});
+const buildConnectionsApi = (
+  overrides?: Partial<RendererApi['connections']>,
+): RendererApi['connections'] => ({
+  connect: vi.fn(async () =>
+    ok({
+      state: 'connected' as const,
+      activeProfileId: '11111111-1111-4111-8111-111111111111',
+      pendingProfileId: null,
+      activeKind: 'redis' as const,
+      environmentLabel: 'local' as const,
+      safetyMode: 'readOnly' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'default',
+      lastConnectionError: null,
+      updatedAt: new Date().toISOString(),
+    }),
+  ),
+  disconnect: vi.fn(async () =>
+    ok({
+      state: 'disconnected' as const,
+      activeProfileId: null,
+      pendingProfileId: null,
+      activeKind: null,
+      environmentLabel: null,
+      safetyMode: 'readOnly' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'default',
+      lastConnectionError: null,
+      updatedAt: new Date().toISOString(),
+    }),
+  ),
+  switch: vi.fn(async () =>
+    ok({
+      state: 'connected' as const,
+      activeProfileId: '11111111-1111-4111-8111-111111111111',
+      pendingProfileId: null,
+      activeKind: 'redis' as const,
+      environmentLabel: 'local' as const,
+      safetyMode: 'readOnly' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'default',
+      lastConnectionError: null,
+      updatedAt: new Date().toISOString(),
+    }),
+  ),
+  getStatus: vi.fn(async () =>
+    ok({
+      state: 'disconnected' as const,
+      activeProfileId: null,
+      pendingProfileId: null,
+      activeKind: null,
+      environmentLabel: null,
+      safetyMode: 'readOnly' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'default',
+      lastConnectionError: null,
+      updatedAt: new Date().toISOString(),
+    }),
+  ),
+  onStatusChanged: vi.fn(
+    (): (() => void) => () => undefined,
+  ),
+  ...overrides,
+});
+const buildMutationsApi = (
+  overrides?: Partial<RendererApi['mutations']>,
+): RendererApi['mutations'] => ({
+  unlock: vi.fn(async () =>
+    ok({
+      state: 'connected' as const,
+      activeProfileId: '11111111-1111-4111-8111-111111111111',
+      pendingProfileId: null,
+      activeKind: 'redis' as const,
+      environmentLabel: 'local' as const,
+      safetyMode: 'unlocked' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'test',
+      lastConnectionError: null,
+      updatedAt: 'now',
+    }),
+  ),
+  relock: vi.fn(async () =>
+    ok({
+      state: 'connected' as const,
+      activeProfileId: '11111111-1111-4111-8111-111111111111',
+      pendingProfileId: null,
+      activeKind: 'redis' as const,
+      environmentLabel: 'local' as const,
+      safetyMode: 'readOnly' as const,
+      safetyUpdatedAt: 'now',
+      safetyReason: 'test',
+      lastConnectionError: null,
+      updatedAt: 'now',
+    }),
+  ),
+  ...overrides,
+});
 
 afterEach(() => {
   cleanup();
@@ -46,6 +181,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(buildProfile())),
         setTags: vi.fn(async () => ok(buildProfile())),
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     render(<App />);
@@ -77,6 +215,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(buildProfile())),
         setTags: vi.fn(async () => ok(buildProfile())),
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     const user = userEvent.setup();
@@ -140,6 +281,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(profiles[0])),
         setTags,
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     const user = userEvent.setup();
@@ -188,6 +332,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(profiles[0])),
         setTags: vi.fn(async () => ok(profiles[0])),
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     const user = userEvent.setup();
@@ -224,6 +371,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(profiles[0])),
         setTags: vi.fn(async () => ok(profiles[0])),
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     const user = userEvent.setup();
@@ -271,6 +421,9 @@ describe('Profiles UI', () => {
         toggleFavorite: vi.fn(async () => ok(profiles[0])),
         setTags: vi.fn(async () => ok(profiles[0])),
       },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
     };
 
     const user = userEvent.setup();
@@ -291,5 +444,353 @@ describe('Profiles UI', () => {
       expect(within(listContainer).getByText('Prod Redis')).toBeInTheDocument(),
     );
     expect(within(listContainer).queryByText('QA Redis')).not.toBeInTheDocument();
+  });
+
+  it('forces prompt policy when secure backend is basic_text', async () => {
+    const list = vi.fn(async () => ok([] as ConnectionProfile[]));
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list,
+        search: vi.fn(async () => ok([])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi({
+        storageStatus: async () =>
+          ok({
+            backend: 'basic_text',
+            canPersistCredentials: false,
+            guidance: 'Use prompt every session.',
+          }),
+      }),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
+    };
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'New profile' }));
+
+    expect(
+      await screen.findByText(/Secure credential saving is disabled on backend/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Use prompt every session\./i)).toBeInTheDocument();
+  });
+
+  it('requires Redis password when save policy is selected', async () => {
+    const create = vi.fn(async () => ok(buildProfile()));
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([])),
+        search: vi.fn(async () => ok([])),
+        create,
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
+    };
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'New profile' }));
+    await user.type(screen.getByLabelText('Name'), 'Redis Auth');
+    await user.type(screen.getByLabelText('Host'), 'auth.redis.local');
+    await user.clear(screen.getByLabelText('Port'));
+    await user.type(screen.getByLabelText('Port'), '6379');
+    await user.click(screen.getByRole('combobox', { name: 'Auth mode' }));
+    await user.click(await screen.findByText('Password / ACL'));
+    await user.click(screen.getByRole('button', { name: 'Create profile' }));
+
+    expect(
+      await screen.findByText('Password is required when saving credentials.'),
+    ).toBeInTheDocument();
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('renders connection status and recovery controls from session state', async () => {
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([buildProfile({ id: 'active-1' })])),
+        search: vi.fn(async () => ok([buildProfile({ id: 'active-1' })])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi({
+        getStatus: async () =>
+          ok({
+            state: 'error',
+            activeProfileId: 'active-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'local',
+            safetyMode: 'readOnly',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: {
+              code: 'CONNECTION_REFUSED',
+              message: 'Connection was refused by the target host.',
+            },
+            updatedAt: 'now',
+        }),
+      }),
+      mutations: buildMutationsApi(),
+    };
+
+    render(<App />);
+    expect(await screen.findByText(/Connection status/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Connection was refused by the target host\./i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open profile settings' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View details' })).toBeInTheDocument();
+  });
+
+  it('prompts for runtime credentials when connect requires prompt policy', async () => {
+    const connect = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: false,
+        error: { code: 'CREDENTIAL_PROMPT_REQUIRED', message: 'Prompt required' },
+      })
+      .mockResolvedValueOnce(
+        ok({
+          state: 'connected' as const,
+          activeProfileId: 'prompt-1',
+          pendingProfileId: null,
+          activeKind: 'redis' as const,
+          environmentLabel: 'local',
+          safetyMode: 'readOnly' as const,
+          safetyUpdatedAt: 'now',
+          lastConnectionError: null,
+          updatedAt: 'now',
+        }),
+      );
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () =>
+          ok([
+            buildProfile({
+              id: 'prompt-1',
+              redisAuth: { mode: 'password', hasPassword: false },
+              credentialPolicy: 'promptEverySession',
+            }),
+          ]),
+        ),
+        search: vi.fn(async () =>
+          ok([
+            buildProfile({
+              id: 'prompt-1',
+              redisAuth: { mode: 'password', hasPassword: false },
+              credentialPolicy: 'promptEverySession',
+            }),
+          ]),
+        ),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi({ connect }),
+      mutations: buildMutationsApi(),
+    };
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Connect' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Enter credentials for this session' }),
+    ).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Password'), 'runtime-secret');
+    await user.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
+  });
+
+  it('shows redis TLS controls only for redis profiles', async () => {
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([])),
+        search: vi.fn(async () => ok([])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi(),
+      mutations: buildMutationsApi(),
+    };
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'New profile' }));
+    expect(screen.getByText('Enable TLS')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('combobox', { name: 'Kind' }));
+    await user.click(await screen.findByText('Memcached'));
+    expect(screen.queryByText('Enable TLS')).not.toBeInTheDocument();
+  });
+
+  it('renders TLS remediation text for TLS_CERT_INVALID errors', async () => {
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([buildProfile({ id: 'tls-1' })])),
+        search: vi.fn(async () => ok([buildProfile({ id: 'tls-1' })])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi({
+        getStatus: async () =>
+          ok({
+            state: 'error',
+            activeProfileId: 'tls-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'local',
+            safetyMode: 'readOnly',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: {
+              code: 'TLS_CERT_INVALID',
+              message: 'TLS validation failed.',
+            },
+            updatedAt: 'now',
+        }),
+      }),
+      mutations: buildMutationsApi(),
+    };
+
+    render(<App />);
+    expect(
+      await screen.findByText(
+        /Check TLS CA bundle path, servername override, and certificate hostname\./i,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps environment and safety indicators visible in app chrome', async () => {
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([buildProfile({ environment: 'prod' })])),
+        search: vi.fn(async () => ok([buildProfile({ environment: 'prod' })])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi({
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'prod-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'prod',
+            safetyMode: 'readOnly' as const,
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+        }),
+      }),
+      mutations: buildMutationsApi(),
+    };
+
+    render(<App />);
+    expect(await screen.findByText('Env: prod')).toBeInTheDocument();
+    expect(screen.getByText('Mode: readOnly')).toBeInTheDocument();
+    expect(screen.getByText(/Environment: prod · Safety: readOnly/i)).toBeInTheDocument();
+  });
+
+  it('reflects unlock and relock safety transitions immediately', async () => {
+    const unlock = vi.fn(async () =>
+      ok({
+        state: 'connected' as const,
+        activeProfileId: 'mode-1',
+        pendingProfileId: null,
+        activeKind: 'redis' as const,
+        environmentLabel: 'local' as const,
+        safetyMode: 'unlocked' as const,
+        safetyUpdatedAt: 'now',
+        lastConnectionError: null,
+        updatedAt: 'now',
+      }),
+    );
+    const relock = vi.fn(async () =>
+      ok({
+        state: 'connected' as const,
+        activeProfileId: 'mode-1',
+        pendingProfileId: null,
+        activeKind: 'redis' as const,
+        environmentLabel: 'local' as const,
+        safetyMode: 'readOnly' as const,
+        safetyUpdatedAt: 'now',
+        lastConnectionError: null,
+        updatedAt: 'now',
+      }),
+    );
+    (window as typeof window & { api: unknown }).api = {
+      ping: async () => ok({ pong: 'pong', serverTime: Date.now() }),
+      profiles: {
+        list: vi.fn(async () => ok([buildProfile({ id: 'mode-1' })])),
+        search: vi.fn(async () => ok([buildProfile({ id: 'mode-1' })])),
+        create: vi.fn(async () => ok(buildProfile())),
+        update: vi.fn(async () => ok(buildProfile())),
+        delete: vi.fn(async () => ok({ id: 'x' })),
+        toggleFavorite: vi.fn(async () => ok(buildProfile())),
+        setTags: vi.fn(async () => ok(buildProfile())),
+      },
+      profileSecrets: buildProfileSecretsApi(),
+      connections: buildConnectionsApi({
+        getStatus: async () =>
+          ok({
+            state: 'connected' as const,
+            activeProfileId: 'mode-1',
+            pendingProfileId: null,
+            activeKind: 'redis' as const,
+            environmentLabel: 'local',
+            safetyMode: 'readOnly' as const,
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+      }),
+      mutations: buildMutationsApi({
+        unlock,
+        relock,
+      }),
+    };
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Unlock mutations' }));
+    await user.click(screen.getByRole('button', { name: 'Confirm unlock' }));
+    expect(await screen.findByText(/Mutations are UNLOCKED/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Relock' }));
+    expect(await screen.findByText(/Read-only guard is active\./i)).toBeInTheDocument();
   });
 });
