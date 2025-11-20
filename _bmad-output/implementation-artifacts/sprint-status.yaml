@@ -43,12 +43,12 @@ development_status:
   1-1-initialize-desktop-foundation-and-secure-process-boundaries: done
   1-2-ui-foundation-tailwind-tokens-base-ui-shadcn-copy-in: done
   1-3-create-and-manage-connection-profiles: done
-  1-4-configure-authentication-and-secure-credential-handling: backlog
-  1-5-connect-disconnect-and-switch-sessions-with-status-and-errors: backlog
-  1-6-configure-redis-tls-per-profile-when-supported: backlog
-  1-7-environment-labels-and-default-safety-posture-read-only-by-default-for-prod: backlog
-  1-8-unlock-and-relock-mutations-mode-with-explicit-safety-signals: backlog
-  epic-1-retrospective: optional
+  1-4-configure-authentication-and-secure-credential-handling: done
+  1-5-connect-disconnect-and-switch-sessions-with-status-and-errors: done
+  1-6-configure-redis-tls-per-profile-when-supported: done
+  1-7-environment-labels-and-default-safety-posture-read-only-by-default-for-prod: done
+  1-8-unlock-and-relock-mutations-mode-with-explicit-safety-signals: done
+  epic-1-retrospective: done
   epic-2: backlog
   2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results: backlog
   2-2-redis-key-metadata-in-results-type-ttl: backlog
