@@ -68,6 +68,15 @@ export const connectionsStatusGetChannel = 'connections:status:get' as const;
 export const connectionsStatusChangedEventChannel = 'connections:status:changed' as const;
 export const mutationsUnlockChannel = 'mutations:unlock' as const;
 export const mutationsRelockChannel = 'mutations:relock' as const;
+export const redisKeysSearchStartChannel = 'redisKeys:search:start' as const;
+export const jobsCancelChannel = 'jobs:cancel' as const;
+export const redisKeysSearchProgressEventChannel = 'redisKeys:search:progress' as const;
+export const redisKeysSearchDoneEventChannel = 'redisKeys:search:done' as const;
+export const redisInspectStartChannel = 'redisInspect:start' as const;
+export const redisInspectProgressEventChannel = 'redisInspect:progress' as const;
+export const redisInspectDoneEventChannel = 'redisInspect:done' as const;
+export const memcachedGetChannel = 'memcached:get' as const;
+export const memcachedStatsGetChannel = 'memcached:stats:get' as const;
 
 export const profilesListRequestSchema = z.object({}).strict();
 export const profilesListResponseSchema = z.union([
@@ -279,6 +288,314 @@ export const mutationsRelockResponseSchema = z.union([
   errorEnvelopeSchema,
 ]);
 
+export const redisKeyTypeSchema = z.enum([
+  'string',
+  'hash',
+  'list',
+  'set',
+  'zset',
+  'stream',
+  'none',
+  'unknown',
+]);
+
+export const redisKeyMetadataStateSchema = z.enum(['pending', 'ready', 'unavailable']);
+
+export const redisKeyDiscoveryItemSchema = z
+  .object({
+    key: z.string().min(1),
+    prefixSegments: z.array(z.string().min(1)),
+    type: redisKeyTypeSchema.optional(),
+    ttlSeconds: z.number().int().nullable().optional(),
+    metadataState: redisKeyMetadataStateSchema.optional(),
+  })
+  .strict();
+
+export const redisKeySearchContinuationSchema = z
+  .object({
+    nextCursor: z.string().optional(),
+    message: z.string().optional(),
+    suggestedAction: z
+      .enum(['refine-search', 'narrow-prefix', 'resume-later', 'none'])
+      .optional(),
+  })
+  .strict();
+
+export const redisKeysSearchStartRequestSchema = z
+  .object({
+    query: z.string().trim().max(512).optional(),
+    prefix: z.string().trim().max(512).optional(),
+    countHint: z.number().int().min(1).max(5000).optional(),
+    maxKeys: z.number().int().min(1).max(50000).optional(),
+    maxDurationMs: z.number().int().min(250).max(120000).optional(),
+    includeMetadata: z.boolean().optional(),
+  })
+  .strict();
+
+export const redisKeysSearchStartDataSchema = z
+  .object({
+    jobId: z.string().min(1),
+    startedAt: z.string(),
+  })
+  .strict();
+
+export const redisKeysSearchStartResponseSchema = z.union([
+  okEnvelopeSchema(redisKeysSearchStartDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const jobsCancelRequestSchema = z
+  .object({
+    jobId: z.string().min(1),
+  })
+  .strict();
+
+export const jobsCancelDataSchema = z
+  .object({
+    jobId: z.string().min(1),
+    cancelled: z.boolean(),
+  })
+  .strict();
+
+export const jobsCancelResponseSchema = z.union([
+  okEnvelopeSchema(jobsCancelDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisKeysSearchProgressEventSchema = z
+  .object({
+    jobId: z.string().min(1),
+    status: z.enum(['running', 'completed', 'cancelled', 'limit-reached', 'error']),
+    keys: z.array(redisKeyDiscoveryItemSchema),
+    scannedCount: z.number().int().nonnegative(),
+    emittedCount: z.number().int().nonnegative(),
+    cursor: z.string(),
+    capReached: z.boolean(),
+    elapsedMs: z.number().int().nonnegative(),
+    continuation: redisKeySearchContinuationSchema.optional(),
+  })
+  .strict();
+
+export const redisKeysSearchDoneEventSchema = z
+  .object({
+    jobId: z.string().min(1),
+    status: z.enum(['completed', 'cancelled', 'limit-reached', 'error']),
+    scannedCount: z.number().int().nonnegative(),
+    emittedCount: z.number().int().nonnegative(),
+    capReached: z.boolean(),
+    elapsedMs: z.number().int().nonnegative(),
+    continuation: redisKeySearchContinuationSchema.optional(),
+    error: ipcErrorSchema.optional(),
+  })
+  .strict();
+
+export const redisInspectStartRequestSchema = z
+  .object({
+    key: z.string().trim().min(1).max(2048),
+    hashChunkSize: z.number().int().min(1).max(2000).optional(),
+    collectionChunkSize: z.number().int().min(1).max(2000).optional(),
+    streamCount: z.number().int().min(1).max(5000).optional(),
+    maxEntries: z.number().int().min(1).max(20000).optional(),
+    maxBytes: z.number().int().min(1024).max(8 * 1024 * 1024).optional(),
+  })
+  .strict();
+
+export const redisInspectStartDataSchema = z
+  .object({
+    jobId: z.string().min(1),
+    startedAt: z.string(),
+  })
+  .strict();
+
+export const redisInspectStartResponseSchema = z.union([
+  okEnvelopeSchema(redisInspectStartDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisHashFieldEntrySchema = z
+  .object({
+    field: z.string(),
+    value: z.string(),
+  })
+  .strict();
+
+export const redisInspectorStringResultSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.literal('string'),
+    ttlSeconds: z.number().int().nullable(),
+    isPartial: z.boolean(),
+    capReached: z.boolean(),
+    capReason: z.string().optional(),
+    fetchedCount: z.number().int().nonnegative(),
+    byteLength: z.number().int().nonnegative(),
+    value: z.string(),
+  })
+  .strict();
+
+export const redisInspectorHashResultSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.literal('hash'),
+    ttlSeconds: z.number().int().nullable(),
+    isPartial: z.boolean(),
+    capReached: z.boolean(),
+    capReason: z.string().optional(),
+    fetchedCount: z.number().int().nonnegative(),
+    totalFields: z.number().int().nonnegative().nullable(),
+    nextCursor: z.string(),
+    hasMore: z.boolean(),
+    entries: z.array(redisHashFieldEntrySchema),
+  })
+  .strict();
+
+export const redisCollectionItemSchema = z
+  .object({
+    value: z.string(),
+    score: z.number().optional(),
+  })
+  .strict();
+
+const redisInspectorCollectionCommonSchema = z
+  .object({
+    key: z.string().min(1),
+    ttlSeconds: z.number().int().nullable(),
+    isPartial: z.boolean(),
+    capReached: z.boolean(),
+    capReason: z.string().optional(),
+    fetchedCount: z.number().int().nonnegative(),
+    totalCount: z.number().int().nonnegative().nullable(),
+    cursor: z.string(),
+    hasMore: z.boolean(),
+    ordering: z.enum(['server', 'lexical']),
+    items: z.array(redisCollectionItemSchema),
+  })
+  .strict();
+
+export const redisInspectorListResultSchema = redisInspectorCollectionCommonSchema.extend({
+  type: z.literal('list'),
+  ordering: z.literal('server'),
+});
+
+export const redisInspectorSetResultSchema = redisInspectorCollectionCommonSchema.extend({
+  type: z.literal('set'),
+  ordering: z.literal('lexical'),
+});
+
+export const redisInspectorZSetResultSchema = redisInspectorCollectionCommonSchema.extend({
+  type: z.literal('zset'),
+  ordering: z.literal('lexical'),
+});
+
+export const redisStreamFieldSchema = z
+  .object({
+    field: z.string(),
+    value: z.string(),
+  })
+  .strict();
+
+export const redisStreamEntrySchema = z
+  .object({
+    id: z.string().min(1),
+    fields: z.array(redisStreamFieldSchema),
+  })
+  .strict();
+
+export const redisInspectorStreamResultSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.literal('stream'),
+    ttlSeconds: z.number().int().nullable(),
+    isPartial: z.boolean(),
+    capReached: z.boolean(),
+    capReason: z.string().optional(),
+    fetchedCount: z.number().int().nonnegative(),
+    totalCount: z.number().int().nonnegative().nullable(),
+    truncated: z.boolean(),
+    entries: z.array(redisStreamEntrySchema),
+  })
+  .strict();
+
+export const redisInspectorNoneResultSchema = z
+  .object({
+    key: z.string().min(1),
+    type: z.literal('none'),
+    ttlSeconds: z.number().int().nullable(),
+    isPartial: z.literal(false),
+    capReached: z.literal(false),
+    fetchedCount: z.literal(0),
+    reason: z.string(),
+  })
+  .strict();
+
+export const redisInspectorResultSchema = z.discriminatedUnion('type', [
+  redisInspectorStringResultSchema,
+  redisInspectorHashResultSchema,
+  redisInspectorListResultSchema,
+  redisInspectorSetResultSchema,
+  redisInspectorZSetResultSchema,
+  redisInspectorStreamResultSchema,
+  redisInspectorNoneResultSchema,
+]);
+
+export const redisInspectProgressEventSchema = z
+  .object({
+    jobId: z.string().min(1),
+    status: z.literal('running'),
+    result: redisInspectorResultSchema,
+  })
+  .strict();
+
+export const redisInspectDoneEventSchema = z
+  .object({
+    jobId: z.string().min(1),
+    status: z.enum(['completed', 'cancelled', 'error']),
+    result: redisInspectorResultSchema.optional(),
+    error: ipcErrorSchema.optional(),
+  })
+  .strict();
+
+export const memcachedGetRequestSchema = z
+  .object({
+    key: z.string().trim().min(1).max(250),
+  })
+  .strict();
+
+export const memcachedGetDataSchema = z
+  .object({
+    key: z.string().min(1),
+    found: z.boolean(),
+    valuePreview: z.string().nullable(),
+    flags: z.number().int().nullable(),
+    bytes: z.number().int().nullable(),
+    capReached: z.boolean(),
+    capReason: z.string().optional(),
+  })
+  .strict();
+
+export const memcachedGetResponseSchema = z.union([
+  okEnvelopeSchema(memcachedGetDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const memcachedStatsGetRequestSchema = z.object({}).strict();
+export const memcachedStatItemSchema = z
+  .object({
+    key: z.string().min(1),
+    value: z.string(),
+  })
+  .strict();
+export const memcachedStatsGetDataSchema = z
+  .object({
+    fetchedAt: z.string(),
+    stats: z.array(memcachedStatItemSchema),
+  })
+  .strict();
+export const memcachedStatsGetResponseSchema = z.union([
+  okEnvelopeSchema(memcachedStatsGetDataSchema),
+  errorEnvelopeSchema,
+]);
+
 export const ipcContract = {
   appPing: {
     channel: appPingChannel,
@@ -389,6 +706,36 @@ export const ipcContract = {
     responseSchema: mutationsRelockResponseSchema,
     description: 'Relock mutation mode to read-only immediately.',
   },
+  redisKeysSearchStart: {
+    channel: redisKeysSearchStartChannel,
+    requestSchema: redisKeysSearchStartRequestSchema,
+    responseSchema: redisKeysSearchStartResponseSchema,
+    description: 'Start progressive Redis key discovery scan job.',
+  },
+  jobsCancel: {
+    channel: jobsCancelChannel,
+    requestSchema: jobsCancelRequestSchema,
+    responseSchema: jobsCancelResponseSchema,
+    description: 'Cancel an active long-running background job by jobId.',
+  },
+  redisInspectStart: {
+    channel: redisInspectStartChannel,
+    requestSchema: redisInspectStartRequestSchema,
+    responseSchema: redisInspectStartResponseSchema,
+    description: 'Start Redis key inspect job for string/hash values.',
+  },
+  memcachedGet: {
+    channel: memcachedGetChannel,
+    requestSchema: memcachedGetRequestSchema,
+    responseSchema: memcachedGetResponseSchema,
+    description: 'Fetch a Memcached value by key with safe preview metadata.',
+  },
+  memcachedStatsGet: {
+    channel: memcachedStatsGetChannel,
+    requestSchema: memcachedStatsGetRequestSchema,
+    responseSchema: memcachedStatsGetResponseSchema,
+    description: 'Fetch Memcached server stats snapshot.',
+  },
 } as const;
 
 export type AppPingRequest = z.infer<typeof appPingRequestSchema>;
@@ -434,3 +781,33 @@ export type MutationsUnlockRequest = z.infer<typeof mutationsUnlockRequestSchema
 export type MutationsUnlockResponse = z.infer<typeof mutationsUnlockResponseSchema>;
 export type MutationsRelockRequest = z.infer<typeof mutationsRelockRequestSchema>;
 export type MutationsRelockResponse = z.infer<typeof mutationsRelockResponseSchema>;
+export type RedisKeyType = z.infer<typeof redisKeyTypeSchema>;
+export type RedisKeyMetadataState = z.infer<typeof redisKeyMetadataStateSchema>;
+export type RedisKeyDiscoveryItem = z.infer<typeof redisKeyDiscoveryItemSchema>;
+export type RedisKeySearchContinuation = z.infer<typeof redisKeySearchContinuationSchema>;
+export type RedisKeysSearchStartRequest = z.infer<typeof redisKeysSearchStartRequestSchema>;
+export type RedisKeysSearchStartResponse = z.infer<typeof redisKeysSearchStartResponseSchema>;
+export type JobsCancelRequest = z.infer<typeof jobsCancelRequestSchema>;
+export type JobsCancelResponse = z.infer<typeof jobsCancelResponseSchema>;
+export type RedisKeysSearchProgressEvent = z.infer<typeof redisKeysSearchProgressEventSchema>;
+export type RedisKeysSearchDoneEvent = z.infer<typeof redisKeysSearchDoneEventSchema>;
+export type RedisInspectStartRequest = z.infer<typeof redisInspectStartRequestSchema>;
+export type RedisInspectStartResponse = z.infer<typeof redisInspectStartResponseSchema>;
+export type RedisHashFieldEntry = z.infer<typeof redisHashFieldEntrySchema>;
+export type RedisInspectorStringResult = z.infer<typeof redisInspectorStringResultSchema>;
+export type RedisInspectorHashResult = z.infer<typeof redisInspectorHashResultSchema>;
+export type RedisCollectionItem = z.infer<typeof redisCollectionItemSchema>;
+export type RedisInspectorListResult = z.infer<typeof redisInspectorListResultSchema>;
+export type RedisInspectorSetResult = z.infer<typeof redisInspectorSetResultSchema>;
+export type RedisInspectorZSetResult = z.infer<typeof redisInspectorZSetResultSchema>;
+export type RedisStreamField = z.infer<typeof redisStreamFieldSchema>;
+export type RedisStreamEntry = z.infer<typeof redisStreamEntrySchema>;
+export type RedisInspectorStreamResult = z.infer<typeof redisInspectorStreamResultSchema>;
+export type RedisInspectorNoneResult = z.infer<typeof redisInspectorNoneResultSchema>;
+export type RedisInspectorResult = z.infer<typeof redisInspectorResultSchema>;
+export type RedisInspectProgressEvent = z.infer<typeof redisInspectProgressEventSchema>;
+export type RedisInspectDoneEvent = z.infer<typeof redisInspectDoneEventSchema>;
+export type MemcachedGetRequest = z.infer<typeof memcachedGetRequestSchema>;
+export type MemcachedGetResponse = z.infer<typeof memcachedGetResponseSchema>;
+export type MemcachedStatsGetRequest = z.infer<typeof memcachedStatsGetRequestSchema>;
+export type MemcachedStatsGetResponse = z.infer<typeof memcachedStatsGetResponseSchema>;

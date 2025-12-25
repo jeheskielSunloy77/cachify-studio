@@ -6,6 +6,9 @@ import {
   connectionsStatusChangedEventChannel,
   connectionsStatusGetChannel,
   connectionsSwitchChannel,
+  jobsCancelChannel,
+  memcachedGetChannel,
+  memcachedStatsGetChannel,
   mutationsRelockChannel,
   mutationsUnlockChannel,
   profileSecretsDeleteChannel,
@@ -23,6 +26,12 @@ import {
   type ConnectionsStatusGetResponse,
   type ConnectionsSwitchRequest,
   type ConnectionsSwitchResponse,
+  type JobsCancelRequest,
+  type JobsCancelResponse,
+  type MemcachedGetRequest,
+  type MemcachedGetResponse,
+  type MemcachedStatsGetRequest,
+  type MemcachedStatsGetResponse,
   type MutationsRelockRequest,
   type MutationsRelockResponse,
   type MutationsUnlockRequest,
@@ -56,6 +65,20 @@ import {
   type ProfilesToggleFavoriteResponse,
   type ProfilesUpdateRequest,
   type ProfilesUpdateResponse,
+  redisKeysSearchDoneEventChannel,
+  redisKeysSearchProgressEventChannel,
+  redisKeysSearchStartChannel,
+  redisInspectDoneEventChannel,
+  redisInspectProgressEventChannel,
+  redisInspectStartChannel,
+  type RedisInspectDoneEvent,
+  type RedisInspectProgressEvent,
+  type RedisInspectStartRequest,
+  type RedisInspectStartResponse,
+  type RedisKeysSearchDoneEvent,
+  type RedisKeysSearchProgressEvent,
+  type RedisKeysSearchStartRequest,
+  type RedisKeysSearchStartResponse,
 } from '../shared/ipc/ipc.contract';
 
 export interface RendererApi {
@@ -91,6 +114,25 @@ export interface RendererApi {
   mutations: {
     unlock: (payload: MutationsUnlockRequest) => Promise<MutationsUnlockResponse>;
     relock: (payload?: MutationsRelockRequest) => Promise<MutationsRelockResponse>;
+  };
+  redisKeys?: {
+    startSearch: (
+      payload?: RedisKeysSearchStartRequest,
+    ) => Promise<RedisKeysSearchStartResponse>;
+    onSearchProgress: (listener: (event: RedisKeysSearchProgressEvent) => void) => () => void;
+    onSearchDone: (listener: (event: RedisKeysSearchDoneEvent) => void) => () => void;
+  };
+  redisInspect?: {
+    start: (payload: RedisInspectStartRequest) => Promise<RedisInspectStartResponse>;
+    onProgress: (listener: (event: RedisInspectProgressEvent) => void) => () => void;
+    onDone: (listener: (event: RedisInspectDoneEvent) => void) => () => void;
+  };
+  memcached?: {
+    get: (payload: MemcachedGetRequest) => Promise<MemcachedGetResponse>;
+    getStats: (payload?: MemcachedStatsGetRequest) => Promise<MemcachedStatsGetResponse>;
+  };
+  jobs?: {
+    cancel: (payload: JobsCancelRequest) => Promise<JobsCancelResponse>;
   };
 }
 
@@ -131,5 +173,48 @@ export const rendererApi: RendererApi = {
   mutations: {
     unlock: async (payload) => ipcRenderer.invoke(mutationsUnlockChannel, payload),
     relock: async (payload = {}) => ipcRenderer.invoke(mutationsRelockChannel, payload),
+  },
+  redisKeys: {
+    startSearch: async (payload = {}) =>
+      ipcRenderer.invoke(redisKeysSearchStartChannel, payload),
+    onSearchProgress: (listener) => {
+      const wrapped = (_event: unknown, payload: RedisKeysSearchProgressEvent) =>
+        listener(payload);
+      ipcRenderer.on(redisKeysSearchProgressEventChannel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(redisKeysSearchProgressEventChannel, wrapped);
+      };
+    },
+    onSearchDone: (listener) => {
+      const wrapped = (_event: unknown, payload: RedisKeysSearchDoneEvent) => listener(payload);
+      ipcRenderer.on(redisKeysSearchDoneEventChannel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(redisKeysSearchDoneEventChannel, wrapped);
+      };
+    },
+  },
+  redisInspect: {
+    start: async (payload) => ipcRenderer.invoke(redisInspectStartChannel, payload),
+    onProgress: (listener) => {
+      const wrapped = (_event: unknown, payload: RedisInspectProgressEvent) => listener(payload);
+      ipcRenderer.on(redisInspectProgressEventChannel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(redisInspectProgressEventChannel, wrapped);
+      };
+    },
+    onDone: (listener) => {
+      const wrapped = (_event: unknown, payload: RedisInspectDoneEvent) => listener(payload);
+      ipcRenderer.on(redisInspectDoneEventChannel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(redisInspectDoneEventChannel, wrapped);
+      };
+    },
+  },
+  memcached: {
+    get: async (payload) => ipcRenderer.invoke(memcachedGetChannel, payload),
+    getStats: async (payload = {}) => ipcRenderer.invoke(memcachedStatsGetChannel, payload),
+  },
+  jobs: {
+    cancel: async (payload) => ipcRenderer.invoke(jobsCancelChannel, payload),
   },
 };

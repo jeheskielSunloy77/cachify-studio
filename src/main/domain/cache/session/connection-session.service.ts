@@ -6,10 +6,21 @@ import type { ConnectionProfile } from '../../../../shared/profiles/profile.sche
 import { getProfileById } from '../../persistence/repositories/connection-profiles.repository';
 import { getDatabase } from '../../persistence/db/connection';
 import { profileSecrets } from '../../security/secrets';
-import { connectMemcachedClient } from '../clients/memcached.client';
-import { connectRedisClient } from '../clients/redis.client';
+import {
+  connectMemcachedClient,
+  type MemcachedGetResult,
+  type MemcachedStatsResult,
+} from '../clients/memcached.client';
+import { connectRedisClient, type RedisCommandValue } from '../clients/redis.client';
 
 type DisconnectableClient = { disconnect: () => Promise<void> };
+type RedisCommandClient = DisconnectableClient & {
+  command: (parts: string[]) => Promise<RedisCommandValue>;
+};
+type MemcachedCommandClient = DisconnectableClient & {
+  get: (key: string) => Promise<MemcachedGetResult>;
+  stats: () => Promise<MemcachedStatsResult>;
+};
 type ErrorEnvelope = { code: string; message: string; details?: unknown };
 type SessionResult =
   | { ok: true; data: ConnectionStatus }
@@ -18,6 +29,7 @@ type SessionResult =
 const CONNECTION_TIMEOUT_MS = 4000;
 
 let activeClient: DisconnectableClient | null = null;
+let activeProfile: ConnectionProfile | null = null;
 let status: ConnectionStatus = {
   state: 'disconnected',
   activeProfileId: null,
@@ -161,6 +173,181 @@ export const connectionSessionService = {
     return () => subscribers.delete(listener);
   },
   getStatus: () => status,
+  getActiveProfile: () => activeProfile,
+  executeRedisCommand: async (
+    parts: string[],
+  ): Promise<{ ok: true; data: RedisCommandValue } | { ok: false; error: ErrorEnvelope }> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before running key discovery.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support command execution.',
+        },
+      };
+    }
+
+    try {
+      const data = await (activeClient as RedisCommandClient).command(parts);
+      return { ok: true, data };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('TIMEOUT')) {
+        return {
+          ok: false,
+          error: { code: 'TIMEOUT', message: 'Redis command timed out.' },
+        };
+      }
+      if (message.includes('REDIS_ERROR')) {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_COMMAND_FAILED',
+            message: message.replace(/^REDIS_ERROR:/, ''),
+          },
+        };
+      }
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_FAILED',
+          message: 'Redis command failed. Verify connectivity and retry.',
+        },
+      };
+    }
+  },
+  executeMemcachedGet: async (
+    key: string,
+  ): Promise<{ ok: true; data: MemcachedGetResult } | { ok: false; error: ErrorEnvelope }> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Memcached before fetching keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'memcached') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Memcached.',
+        },
+      };
+    }
+    if (!('get' in activeClient) || typeof activeClient.get !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'MEMCACHED_COMMAND_UNAVAILABLE',
+          message: 'Active Memcached client does not support get operation.',
+        },
+      };
+    }
+
+    try {
+      const data = await (activeClient as MemcachedCommandClient).get(key);
+      return { ok: true, data };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('TIMEOUT')) {
+        return {
+          ok: false,
+          error: { code: 'TIMEOUT', message: 'Memcached request timed out.' },
+        };
+      }
+      if (message.includes('PROTOCOL_ERROR')) {
+        return {
+          ok: false,
+          error: { code: 'MEMCACHED_PROTOCOL_ERROR', message: 'Memcached returned an invalid response.' },
+        };
+      }
+      return {
+        ok: false,
+        error: {
+          code: 'MEMCACHED_GET_FAILED',
+          message: 'Memcached get failed. Verify key and connectivity.',
+        },
+      };
+    }
+  },
+  executeMemcachedStats: async (): Promise<
+    { ok: true; data: MemcachedStatsResult } | { ok: false; error: ErrorEnvelope }
+  > => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Memcached before requesting stats.',
+        },
+      };
+    }
+    if (status.activeKind !== 'memcached') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Memcached.',
+        },
+      };
+    }
+    if (!('stats' in activeClient) || typeof activeClient.stats !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'MEMCACHED_COMMAND_UNAVAILABLE',
+          message: 'Active Memcached client does not support stats operation.',
+        },
+      };
+    }
+
+    try {
+      const data = await (activeClient as MemcachedCommandClient).stats();
+      return { ok: true, data };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes('TIMEOUT')) {
+        return {
+          ok: false,
+          error: { code: 'TIMEOUT', message: 'Memcached stats request timed out.' },
+        };
+      }
+      if (message.includes('PROTOCOL_ERROR')) {
+        return {
+          ok: false,
+          error: { code: 'MEMCACHED_PROTOCOL_ERROR', message: 'Memcached returned invalid stats data.' },
+        };
+      }
+      return {
+        ok: false,
+        error: {
+          code: 'MEMCACHED_STATS_FAILED',
+          message: 'Failed to load Memcached stats. Retry or reconnect.',
+        },
+      };
+    }
+  },
   connect: async (
     profileId: string,
     runtimeCredentials?: ConnectionRuntimeCredentials,
@@ -208,6 +395,7 @@ export const connectionSessionService = {
           : { safetyReason: 'Connections start in read-only mode by default.' }),
         lastConnectionError: null,
       });
+      activeProfile = profile;
       return { ok: true as const, data: status };
     } catch (error) {
       const mapped = mapConnectionError(error);
@@ -233,6 +421,7 @@ export const connectionSessionService = {
       }
     } finally {
       activeClient = null;
+      activeProfile = null;
       updateStatus({
         state: 'disconnected',
         activeProfileId: null,

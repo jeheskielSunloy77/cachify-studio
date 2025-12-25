@@ -16,6 +16,15 @@ import {
 	connectionsSwitchChannel,
 	connectionsSwitchRequestSchema,
 	connectionsSwitchResponseSchema,
+	jobsCancelChannel,
+	jobsCancelRequestSchema,
+	jobsCancelResponseSchema,
+	memcachedGetChannel,
+	memcachedGetRequestSchema,
+	memcachedGetResponseSchema,
+	memcachedStatsGetChannel,
+	memcachedStatsGetRequestSchema,
+	memcachedStatsGetResponseSchema,
 	mutationsRelockChannel,
 	mutationsRelockRequestSchema,
 	mutationsRelockResponseSchema,
@@ -55,11 +64,28 @@ import {
 	profilesUpdateChannel,
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
+	redisInspectDoneEventChannel,
+	redisInspectDoneEventSchema,
+	redisInspectProgressEventChannel,
+	redisInspectProgressEventSchema,
+	redisInspectStartChannel,
+	redisInspectStartRequestSchema,
+	redisInspectStartResponseSchema,
+	redisKeysSearchDoneEventChannel,
+	redisKeysSearchDoneEventSchema,
+	redisKeysSearchProgressEventChannel,
+	redisKeysSearchProgressEventSchema,
+	redisKeysSearchStartChannel,
+	redisKeysSearchStartRequestSchema,
+	redisKeysSearchStartResponseSchema,
 	type AppPingResponse,
 	type ConnectionsConnectResponse,
 	type ConnectionsDisconnectResponse,
 	type ConnectionsStatusGetResponse,
 	type ConnectionsSwitchResponse,
+	type JobsCancelResponse,
+	type MemcachedGetResponse,
+	type MemcachedStatsGetResponse,
 	type MutationsRelockResponse,
 	type MutationsUnlockResponse,
 	type ProfileSecretsDeleteResponse,
@@ -73,8 +99,16 @@ import {
 	type ProfilesSetTagsResponse,
 	type ProfilesToggleFavoriteResponse,
 	type ProfilesUpdateResponse,
+	type RedisInspectStartResponse,
+	type RedisKeysSearchStartResponse,
 } from '../../shared/ipc/ipc.contract'
 import { getPingPayload } from '../domain/app.service'
+import { runRedisKeyDiscoveryJob } from '../domain/cache/explorer/redis-key-discovery.service'
+import {
+	normalizeMemcachedGetResult,
+	normalizeMemcachedStatsResult,
+} from '../domain/cache/inspector/memcached-inspector.service'
+import { runRedisInspectJob } from '../domain/cache/inspector/redis-inspector.service'
 import { connectionSessionService } from '../domain/cache/session/connection-session.service'
 import { getPersistenceStatus } from '../domain/persistence/db/connection'
 import { profilesService } from '../domain/persistence/services/connection-profiles.service'
@@ -123,6 +157,9 @@ const ensurePersistenceReady = () => {
 	const status = getPersistenceStatus()
 	return status.ready
 }
+
+const buildJobId = () => `job-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+const activeJobs = new Map<string, { cancelRequested: boolean }>()
 
 const publishConnectionStatus = () => {
 	const snapshot = connectionSessionService.getStatus()
@@ -698,6 +735,218 @@ const handleMutationsRelock = async (
 	)
 }
 
+const handleRedisKeysSearchStart = async (
+	event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisKeysSearchStartResponse> => {
+	const parsed = redisKeysSearchStartRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisKeys:search:start',
+			parsed.error.flatten(),
+		) as RedisKeysSearchStartResponse
+	}
+
+	const status = connectionSessionService.getStatus()
+	if (status.state !== 'connected' || status.activeKind !== 'redis') {
+		return errorEnvelope(
+			'NOT_CONNECTED',
+			'Connect to Redis before searching keys.',
+		) as RedisKeysSearchStartResponse
+	}
+
+	const jobId = buildJobId()
+	const startedAt = new Date().toISOString()
+	const jobState = { cancelRequested: false }
+	activeJobs.set(jobId, jobState)
+
+	void runRedisKeyDiscoveryJob({
+		jobId,
+		request: parsed.data,
+		executeRedisCommand: (parts) => connectionSessionService.executeRedisCommand(parts),
+		isCancelled: () => activeJobs.get(jobId)?.cancelRequested === true,
+		onProgress: (progress) => {
+			if (!event.sender.isDestroyed()) {
+				const validated = redisKeysSearchProgressEventSchema.safeParse(progress)
+				if (validated.success) {
+					event.sender.send(redisKeysSearchProgressEventChannel, validated.data)
+				}
+			}
+		},
+		onDone: (done) => {
+			if (!event.sender.isDestroyed()) {
+				const validated = redisKeysSearchDoneEventSchema.safeParse(done)
+				if (validated.success) {
+					event.sender.send(redisKeysSearchDoneEventChannel, validated.data)
+				}
+			}
+			activeJobs.delete(jobId)
+		},
+	})
+
+	return ensureResponseEnvelope(
+		redisKeysSearchStartResponseSchema,
+		{
+			ok: true,
+			data: {
+				jobId,
+				startedAt,
+			},
+		},
+		'Invalid redisKeys:search:start response envelope',
+	)
+}
+
+const handleJobsCancel = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<JobsCancelResponse> => {
+	const parsed = jobsCancelRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for jobs:cancel',
+			parsed.error.flatten(),
+		) as JobsCancelResponse
+	}
+
+	const job = activeJobs.get(parsed.data.jobId)
+	if (job) {
+		job.cancelRequested = true
+	}
+
+	return ensureResponseEnvelope(
+		jobsCancelResponseSchema,
+		{
+			ok: true,
+			data: {
+				jobId: parsed.data.jobId,
+				cancelled: Boolean(job),
+			},
+		},
+		'Invalid jobs:cancel response envelope',
+	)
+}
+
+const handleRedisInspectStart = async (
+	event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisInspectStartResponse> => {
+	const parsed = redisInspectStartRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisInspect:start',
+			parsed.error.flatten(),
+		) as RedisInspectStartResponse
+	}
+
+	const status = connectionSessionService.getStatus()
+	if (status.state !== 'connected' || status.activeKind !== 'redis') {
+		return errorEnvelope(
+			'NOT_CONNECTED',
+			'Connect to Redis before inspecting keys.',
+		) as RedisInspectStartResponse
+	}
+
+	const jobId = buildJobId()
+	const startedAt = new Date().toISOString()
+	activeJobs.set(jobId, { cancelRequested: false })
+
+	void runRedisInspectJob({
+		jobId,
+		request: parsed.data,
+		executeRedisCommand: (parts) => connectionSessionService.executeRedisCommand(parts),
+		isCancelled: () => activeJobs.get(jobId)?.cancelRequested === true,
+		onProgress: (progress) => {
+			if (!event.sender.isDestroyed()) {
+				const validated = redisInspectProgressEventSchema.safeParse(progress)
+				if (validated.success) {
+					event.sender.send(redisInspectProgressEventChannel, validated.data)
+				}
+			}
+		},
+		onDone: (done) => {
+			if (!event.sender.isDestroyed()) {
+				const validated = redisInspectDoneEventSchema.safeParse(done)
+				if (validated.success) {
+					event.sender.send(redisInspectDoneEventChannel, validated.data)
+				}
+			}
+			activeJobs.delete(jobId)
+		},
+	})
+
+	return ensureResponseEnvelope(
+		redisInspectStartResponseSchema,
+		{
+			ok: true,
+			data: {
+				jobId,
+				startedAt,
+			},
+		},
+		'Invalid redisInspect:start response envelope',
+	)
+}
+
+const handleMemcachedGet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<MemcachedGetResponse> => {
+	const parsed = memcachedGetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for memcached:get',
+			parsed.error.flatten(),
+		) as MemcachedGetResponse
+	}
+
+	const result = await connectionSessionService.executeMemcachedGet(parsed.data.key)
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as MemcachedGetResponse
+	}
+
+	return ensureResponseEnvelope(
+		memcachedGetResponseSchema,
+		{
+			ok: true,
+			data: normalizeMemcachedGetResult(parsed.data.key, result.data),
+		},
+		'Invalid memcached:get response envelope',
+	)
+}
+
+const handleMemcachedStatsGet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<MemcachedStatsGetResponse> => {
+	const parsed = memcachedStatsGetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for memcached:stats:get',
+			parsed.error.flatten(),
+		) as MemcachedStatsGetResponse
+	}
+
+	const result = await connectionSessionService.executeMemcachedStats()
+	if ('error' in result) {
+		return errorEnvelope(result.error.code, result.error.message) as MemcachedStatsGetResponse
+	}
+
+	return ensureResponseEnvelope(
+		memcachedStatsGetResponseSchema,
+		{
+			ok: true,
+			data: normalizeMemcachedStatsResult(result.data),
+		},
+		'Invalid memcached:stats:get response envelope',
+	)
+}
+
 export const registerIpcHandlers = () => {
 	ipcMain.handle(appPingChannel, handlePing)
 	ipcMain.handle(profilesListChannel, handleProfilesList)
@@ -717,4 +966,9 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(connectionsStatusGetChannel, handleConnectionsStatusGet)
 	ipcMain.handle(mutationsUnlockChannel, handleMutationsUnlock)
 	ipcMain.handle(mutationsRelockChannel, handleMutationsRelock)
+	ipcMain.handle(redisKeysSearchStartChannel, handleRedisKeysSearchStart)
+	ipcMain.handle(jobsCancelChannel, handleJobsCancel)
+	ipcMain.handle(redisInspectStartChannel, handleRedisInspectStart)
+	ipcMain.handle(memcachedGetChannel, handleMemcachedGet)
+	ipcMain.handle(memcachedStatsGetChannel, handleMemcachedStatsGet)
 }
