@@ -644,7 +644,8 @@ describe('Profiles UI', () => {
     expect(screen.getByText('Enable TLS')).toBeInTheDocument();
 
     await user.click(screen.getByRole('combobox', { name: 'Kind' }));
-    await user.click(await screen.findByText('Memcached'));
+    const kindListbox = await screen.findByRole('listbox');
+    await user.click(within(kindListbox).getByRole('option', { name: 'Memcached' }));
     expect(screen.queryByText('Enable TLS')).not.toBeInTheDocument();
   });
 

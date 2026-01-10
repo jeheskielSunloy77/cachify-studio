@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ProfilesPage } from '@/renderer/features/profiles/ProfilesPage'
+import { RedisExplorerPanel } from '@/renderer/features/explorer/RedisExplorerPanel'
 import type { ConnectionStatus } from '@/shared/ipc/ipc.contract'
 
 export const App = () => {
@@ -78,6 +79,7 @@ export const App = () => {
 			</header>
 
 			<ProfilesPage />
+			<RedisExplorerPanel connectionStatus={trustState} />
 		</main>
 	)
 }
