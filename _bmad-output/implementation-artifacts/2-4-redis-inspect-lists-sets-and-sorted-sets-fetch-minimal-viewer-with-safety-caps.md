@@ -1,6 +1,6 @@
 # Story 2.4: Redis Inspect Lists, Sets, and Sorted Sets (Fetch + Minimal Viewer with Safety Caps)
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-4-redis-inspect-lists-sets-and-sorted-sets-fetch-minimal-viewer-with-safety-caps`
@@ -28,19 +28,19 @@ so that I can understand ordered and collection-based data.
 
 ## Tasks / Subtasks
 
-- [ ] Extend inspector type handlers for list/set/zset (AC: 1,2,3,4)
-  - [ ] List fetch with bounded ranges (`LRANGE` windows).
-  - [ ] Set fetch with `SSCAN` incremental streaming.
-  - [ ] Sorted set fetch with `ZSCAN` or `ZRANGE` windows with score capture.
-- [ ] Unify collection viewer model (AC: 1,2,3)
-  - [ ] Include stable shape: `items[]`, `cursor`, `hasMore`, `isPartial`, `capReached`.
-  - [ ] Preserve ordering guarantees for lists and deterministic ordering strategy for set/zset display.
-- [ ] Render collection inspector variants (AC: 1,2,3,4)
-  - [ ] Type-aware headers and count hints.
-  - [ ] Large-result messaging with next actions.
-- [ ] Add tests (AC: 1,2,3,4)
-  - [ ] Main tests for each type and large-result limits.
-  - [ ] Renderer tests for type-specific rendering and partial states.
+- [x] Extend inspector type handlers for list/set/zset (AC: 1,2,3,4)
+  - [x] List fetch with bounded ranges (`LRANGE` windows).
+  - [x] Set fetch with `SSCAN` incremental streaming.
+  - [x] Sorted set fetch with `ZSCAN` or `ZRANGE` windows with score capture.
+- [x] Unify collection viewer model (AC: 1,2,3)
+  - [x] Include stable shape: `items[]`, `cursor`, `hasMore`, `isPartial`, `capReached`.
+  - [x] Preserve ordering guarantees for lists and deterministic ordering strategy for set/zset display.
+- [x] Render collection inspector variants (AC: 1,2,3,4)
+  - [x] Type-aware headers and count hints.
+  - [x] Large-result messaging with next actions.
+- [x] Add tests (AC: 1,2,3,4)
+  - [x] Main tests for each type and large-result limits.
+  - [x] Renderer tests for type-specific rendering and partial states.
 
 ## Dev Notes
 
@@ -116,16 +116,29 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Extended inspector contract union to include list/set/zset collection result variants and stable `items/cursor/hasMore/isPartial/capReached` payload shape.
+- Extended main inspector service with list (`LLEN` + `LRANGE` windows), set (`SSCAN`), and zset (`ZSCAN`) handlers with safe entry/byte caps.
+- Updated renderer inspector table views for list/set/zset with ordering hints and export-later cap messaging.
+- Ran `npm run lint`, `npm run typecheck`, and `npm test` (all passing).
 
 ### Completion Notes List
 
-- Story context created with collection-inspection guardrails.
+- Implemented collection inspector handlers for list, set, and sorted set using bounded window/scan patterns.
+- Added deterministic display strategy: list preserves server order, set/zset normalize lexical ordering for stable rendering.
+- Added explicit cap metadata (`COLLECTION_ENTRY_LIMIT`, `COLLECTION_PREVIEW_LIMIT`) and partial state indicators.
+- Added main and renderer tests for collection types, score capture, and partial/cap rendering behavior.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-4-redis-inspect-lists-sets-and-sorted-sets-fetch-minimal-viewer-with-safety-caps.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.4.
+- 2026-02-10: Implemented list/set/zset inspector handlers, unified collection payload model, renderer collection views, and tests; story moved to review.

@@ -1,6 +1,6 @@
 # Story 2.6: Memcached Get by Key (Read) with Basic Metadata and Error Handling
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling`
@@ -25,18 +25,18 @@ so that I can verify what is currently cached.
 
 ## Tasks / Subtasks
 
-- [ ] Add Memcached key fetch IPC contract (AC: 1,2,3)
-  - [ ] Define request/response payload with key, value preview, and metadata fields.
-- [ ] Implement `get` operation in main Memcached client flow (AC: 1,2)
-  - [ ] Parse text-protocol response safely.
-  - [ ] Capture metadata (`flags`, `bytes`) when available.
-- [ ] Implement recoverable error mapping (AC: 3)
-  - [ ] Normalize missing key and connection failures into actionable envelope codes.
-- [ ] Add renderer fetch UX (AC: 1,2,3)
-  - [ ] Key input, fetch action, success panel, and inline recovery guidance.
-- [ ] Add tests (AC: 1,2,3)
-  - [ ] Main tests for hit/miss/error protocol handling.
-  - [ ] Renderer tests for success/error states and retry flow.
+- [x] Add Memcached key fetch IPC contract (AC: 1,2,3)
+  - [x] Define request/response payload with key, value preview, and metadata fields.
+- [x] Implement `get` operation in main Memcached client flow (AC: 1,2)
+  - [x] Parse text-protocol response safely.
+  - [x] Capture metadata (`flags`, `bytes`) when available.
+- [x] Implement recoverable error mapping (AC: 3)
+  - [x] Normalize missing key and connection failures into actionable envelope codes.
+- [x] Add renderer fetch UX (AC: 1,2,3)
+  - [x] Key input, fetch action, success panel, and inline recovery guidance.
+- [x] Add tests (AC: 1,2,3)
+  - [x] Main tests for hit/miss/error protocol handling.
+  - [x] Renderer tests for success/error states and retry flow.
 
 ## Dev Notes
 
@@ -111,16 +111,34 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Added `memcached:get` request/response contracts and preload bridge API wiring.
+- Replaced memcached socket parsing with buffered chunk-safe `get`/`stats` text-protocol parsing.
+- Added memcached get/session error mapping (`TIMEOUT`, protocol errors, command unavailable).
+- Ran `npm run lint`, `npm run typecheck`, and `npm test` successfully.
 
 ### Completion Notes List
 
-- Story context created with Memcached fetch/error handling guidance.
+- Implemented `memcached:get` contract + IPC handler returning normalized key preview metadata.
+- Added memcached get renderer UI (key input, fetch action, success/miss panel, recoverable error messages).
+- Preserved safe preview cap behavior with explicit `capReached`/`capReason` metadata.
+- Added main and renderer tests for hit/miss, protocol errors, timeout paths, and retry flow.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/clients/memcached.client.ts`
+- `src/main/domain/cache/session/connection-session.service.ts`
+- `src/main/domain/cache/inspector/memcached-inspector.service.ts`
+- `src/main/ipc/register-handlers.ts`
+- `src/preload/api.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/memcached.client.test.ts`
+- `src/main/test/memcached-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.6.
+- 2026-02-10: Implemented Memcached key fetch flow with metadata/error handling and tests; story moved to review.

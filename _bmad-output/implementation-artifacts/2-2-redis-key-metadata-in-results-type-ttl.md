@@ -1,6 +1,6 @@
 # Story 2.2: Redis Key Metadata in Results (Type + TTL)
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-2-redis-key-metadata-in-results-type-ttl`
@@ -22,18 +22,18 @@ so that I can choose the right keys to inspect.
 
 ## Tasks / Subtasks
 
-- [ ] Extend key discovery pipeline with metadata fetch strategy (AC: 1,2)
-  - [ ] Add bounded concurrency for TYPE/TTL lookups.
-  - [ ] Allow partial metadata display while lookups continue.
-- [ ] Implement resilient metadata semantics (AC: 1,2)
-  - [ ] Show unknown TTL/type as explicit unavailable state.
-  - [ ] Map protocol/network failures to actionable envelope errors.
-- [ ] Update renderer results list (AC: 1)
-  - [ ] Render key, type badge, and TTL label consistently.
-  - [ ] Keep list responsive while metadata streams in.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Main tests for mixed success/failure metadata batches.
-  - [ ] Renderer tests for progressive metadata rendering and fallback states.
+- [x] Extend key discovery pipeline with metadata fetch strategy (AC: 1,2)
+  - [x] Add bounded concurrency for TYPE/TTL lookups.
+  - [x] Allow partial metadata display while lookups continue.
+- [x] Implement resilient metadata semantics (AC: 1,2)
+  - [x] Show unknown TTL/type as explicit unavailable state.
+  - [x] Map protocol/network failures to actionable envelope errors.
+- [x] Update renderer results list (AC: 1)
+  - [x] Render key, type badge, and TTL label consistently.
+  - [x] Keep list responsive while metadata streams in.
+- [x] Add tests (AC: 1,2)
+  - [x] Main tests for mixed success/failure metadata batches.
+  - [x] Renderer tests for progressive metadata rendering and fallback states.
 
 ## Dev Notes
 
@@ -109,16 +109,29 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Extended `redisKeys:search:start` contract payload to support metadata opt-in.
+- Added bounded-concurrency TYPE/TTL lookups in key discovery runner with progressive metadata events.
+- Updated renderer row rendering for type/TTL states (`loading`, `persistent`, `missing`, `unavailable`).
+- Ran `npm run lint && npm run typecheck && npm test` successfully.
 
 ### Completion Notes List
 
-- Story context created with metadata-specific protocol guardrails.
+- Added progressive metadata enrichment on top of scan streaming without delaying first result emission.
+- Implemented fallback handling for mixed success/failure metadata retrieval (`unknown` type + explicit unavailable TTL state).
+- Preserved Redis TTL semantics in UI labels (`-1` persistent, `-2` missing).
+- Added tests for mixed metadata success/failure in main and progressive metadata rendering in renderer.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/explorer/redis-key-discovery.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-key-discovery.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-2-redis-key-metadata-in-results-type-ttl.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.2.
+- 2026-02-10: Implemented progressive Redis key metadata (TYPE/TTL), fallback states, and metadata streaming tests; story moved to review.

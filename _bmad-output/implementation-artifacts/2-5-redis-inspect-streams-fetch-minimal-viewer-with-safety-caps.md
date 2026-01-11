@@ -1,6 +1,6 @@
 # Story 2.5: Redis Inspect Streams (Fetch + Minimal Viewer with Safety Caps)
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps`
@@ -22,17 +22,17 @@ so that I can review recent entries and their fields.
 
 ## Tasks / Subtasks
 
-- [ ] Add stream inspector handler (AC: 1,2)
-  - [ ] Fetch recent entries with bounded count using `XRANGE`/`XREVRANGE` strategy.
-  - [ ] Return entry IDs and field/value maps with explicit truncation metadata.
-- [ ] Add stream viewer renderer (AC: 1,2)
-  - [ ] Render entry id, timestamp-friendly hint, and fields.
-  - [ ] Show truncated/partial state with follow-up actions.
-- [ ] Add cancel/refresh interactions (AC: 2)
-  - [ ] Integrate with existing job controls for long fetch paths.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Main tests for stream parsing and truncation behavior.
-  - [ ] Renderer tests for stream table rendering and cap messaging.
+- [x] Add stream inspector handler (AC: 1,2)
+  - [x] Fetch recent entries with bounded count using `XRANGE`/`XREVRANGE` strategy.
+  - [x] Return entry IDs and field/value maps with explicit truncation metadata.
+- [x] Add stream viewer renderer (AC: 1,2)
+  - [x] Render entry id, timestamp-friendly hint, and fields.
+  - [x] Show truncated/partial state with follow-up actions.
+- [x] Add cancel/refresh interactions (AC: 2)
+  - [x] Integrate with existing job controls for long fetch paths.
+- [x] Add tests (AC: 1,2)
+  - [x] Main tests for stream parsing and truncation behavior.
+  - [x] Renderer tests for stream table rendering and cap messaging.
 
 ## Dev Notes
 
@@ -106,16 +106,29 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Extended inspect contract with stream request option (`streamCount`) and stream result schema (`entries[]`, `truncated`, `capReason`).
+- Implemented stream inspector branch in main using `XLEN` + bounded `XREVRANGE` fetch with entry/byte caps.
+- Implemented renderer stream table view and truncation guidance in inspector panel.
+- Ran `npm run lint`, `npm run typecheck`, and `npm test` successfully.
 
 ### Completion Notes List
 
-- Story context created with stream-specific constraints and viewer guidance.
+- Added stream inspection with recent-entry bias and explicit truncation metadata for high-volume streams.
+- Preserved ordered field/value display per stream entry and structured-clone-safe payloads.
+- Reused existing job start/cancel controls for stream inspection flow.
+- Added main and renderer tests for stream parsing, truncation, and table rendering states.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.5.
+- 2026-02-10: Implemented stream inspector fetch/render flow with truncation metadata and tests; story moved to review.

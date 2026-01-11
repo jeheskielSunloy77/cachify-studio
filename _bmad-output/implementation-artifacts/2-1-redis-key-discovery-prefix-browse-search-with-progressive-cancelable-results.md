@@ -1,6 +1,6 @@
 # Story 2.1: Redis Key Discovery (Prefix Browse + Search) with Progressive, Cancelable Results
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results`
@@ -25,22 +25,22 @@ so that I can find the right key fast without freezing the app.
 
 ## Tasks / Subtasks
 
-- [ ] Implement Redis key discovery job in main process (AC: 1,2,3)
-  - [ ] Add contract channels for `redisKeys:search:start`, `jobs:cancel`, and progress/done events in `src/shared/ipc/ipc.contract.ts`
-  - [ ] Add main-process job orchestration and cancellation wiring in `src/main/ipc/register-handlers.ts`
-  - [ ] Implement incremental SCAN-based discovery with MATCH + COUNT hints and cursor continuation.
-- [ ] Implement prefix tree derivation and streaming merge behavior (AC: 1,2)
-  - [ ] Normalize key namespace segments for stable prefix grouping.
-  - [ ] Stream partial key batches while preserving deterministic ordering in UI.
-- [ ] Add renderer search + cancel UX (AC: 2,3)
-  - [ ] Add search input, in-progress indicator, cancel control, and cap-reached messaging.
-  - [ ] Keep interactions keyboard-first and maintain visible trust/safety state.
-- [ ] Add limits and guardrails (AC: 3)
-  - [ ] Cap max scanned keys/time budget per job.
-  - [ ] Return explicit continuation guidance instead of blocking.
-- [ ] Add tests (AC: 1,2,3)
-  - [ ] Main tests for scan iteration, cancellation, and cap behavior.
-  - [ ] Renderer tests for progressive results and cancellation states.
+- [x] Implement Redis key discovery job in main process (AC: 1,2,3)
+  - [x] Add contract channels for `redisKeys:search:start`, `jobs:cancel`, and progress/done events in `src/shared/ipc/ipc.contract.ts`
+  - [x] Add main-process job orchestration and cancellation wiring in `src/main/ipc/register-handlers.ts`
+  - [x] Implement incremental SCAN-based discovery with MATCH + COUNT hints and cursor continuation.
+- [x] Implement prefix tree derivation and streaming merge behavior (AC: 1,2)
+  - [x] Normalize key namespace segments for stable prefix grouping.
+  - [x] Stream partial key batches while preserving deterministic ordering in UI.
+- [x] Add renderer search + cancel UX (AC: 2,3)
+  - [x] Add search input, in-progress indicator, cancel control, and cap-reached messaging.
+  - [x] Keep interactions keyboard-first and maintain visible trust/safety state.
+- [x] Add limits and guardrails (AC: 3)
+  - [x] Cap max scanned keys/time budget per job.
+  - [x] Return explicit continuation guidance instead of blocking.
+- [x] Add tests (AC: 1,2,3)
+  - [x] Main tests for scan iteration, cancellation, and cap behavior.
+  - [x] Renderer tests for progressive results and cancellation states.
 
 ## Dev Notes
 
@@ -114,16 +114,35 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Added shared IPC contracts and event payload schemas for search/cancel job lifecycle.
+- Added main-process discovery job runner with SCAN cursor iteration, dedupe, caps, and continuation hints.
+- Added renderer explorer panel with progressive stream merge, prefix browse, and cancel control.
+- Ran `npm run lint`, `npm run typecheck`, and `npm test` (all passing).
 
 ### Completion Notes List
 
-- Story context created with exhaustive artifact and protocol analysis.
+- Implemented Redis command execution support on the active session client for SCAN-based discovery.
+- Implemented cancelable discovery jobs with progress and done events (`running`, `cancelled`, `limit-reached`, `completed`, `error`).
+- Added deterministic key ordering and prefix segment normalization for stable prefix browsing.
+- Added keyboard-first Redis explorer UI with search, prefix drill-down, and cap-reached messaging.
+- Added main and renderer tests covering scan iteration, cancellation, and progressive rendering behavior.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/clients/redis.client.ts`
+- `src/main/domain/cache/session/connection-session.service.ts`
+- `src/main/domain/cache/explorer/redis-key-discovery.service.ts`
+- `src/main/ipc/register-handlers.ts`
+- `src/preload/api.ts`
+- `src/renderer/app/App.tsx`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-key-discovery.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.1.
+- 2026-02-10: Implemented Redis key discovery job model (SCAN streaming + cancellation), renderer explorer UX, and tests; story moved to review.

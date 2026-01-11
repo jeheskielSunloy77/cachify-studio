@@ -1,6 +1,6 @@
 # Story 2.3: Redis Inspect Strings and Hashes (Fetch + Minimal Viewer with Safety Caps)
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-10
 Story Key: `2-3-redis-inspect-strings-and-hashes-fetch-minimal-viewer-with-safety-caps`
@@ -25,21 +25,21 @@ so that I can understand what a key contains.
 
 ## Tasks / Subtasks
 
-- [ ] Add inspector fetch contract for string/hash types (AC: 1,2,3)
-  - [ ] Define typed request/response for key inspect with explicit result union by Redis type.
-  - [ ] Add cancelable job path for large hash fetches.
-- [ ] Implement Redis string/hash inspectors in main (AC: 1,2)
-  - [ ] String: GET with byte-size checks.
-  - [ ] Hash: HLEN + HSCAN/HGETALL strategy with bounded chunking.
-- [ ] Implement safety caps and truncation metadata (AC: 3)
-  - [ ] Respect decoded preview cap of 1MB.
-  - [ ] Surface cap reason and remaining-safe actions.
-- [ ] Build minimal viewer in renderer (AC: 1,2,3)
-  - [ ] Show metadata banner (type, TTL if available, cap status).
-  - [ ] Provide clear partial-result indicator.
-- [ ] Add tests (AC: 1,2,3)
-  - [ ] Main tests for string/hash success, missing key, cap exceeded.
-  - [ ] Renderer tests for viewer states and large payload behavior.
+- [x] Add inspector fetch contract for string/hash types (AC: 1,2,3)
+  - [x] Define typed request/response for key inspect with explicit result union by Redis type.
+  - [x] Add cancelable job path for large hash fetches.
+- [x] Implement Redis string/hash inspectors in main (AC: 1,2)
+  - [x] String: GET with byte-size checks.
+  - [x] Hash: HLEN + HSCAN/HGETALL strategy with bounded chunking.
+- [x] Implement safety caps and truncation metadata (AC: 3)
+  - [x] Respect decoded preview cap of 1MB.
+  - [x] Surface cap reason and remaining-safe actions.
+- [x] Build minimal viewer in renderer (AC: 1,2,3)
+  - [x] Show metadata banner (type, TTL if available, cap status).
+  - [x] Provide clear partial-result indicator.
+- [x] Add tests (AC: 1,2,3)
+  - [x] Main tests for string/hash success, missing key, cap exceeded.
+  - [x] Renderer tests for viewer states and large payload behavior.
 
 ## Dev Notes
 
@@ -115,16 +115,31 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Pending implementation.
+- Added shared inspector start/progress/done contracts with discriminated result unions for `string`, `hash`, and `none`.
+- Added main inspector job runner with hash cursor scanning, 1MB preview cap enforcement, and cancel support via existing job registry.
+- Added renderer inspector panel integrated into explorer results with type/TTL metadata, cap badges, and partial-result rendering.
+- Ran `npm run lint`, `npm run typecheck`, and `npm test` (all passing).
 
 ### Completion Notes List
 
-- Story context created with inspector guardrails for strings/hashes.
+- Implemented cancelable Redis inspector jobs for string and hash keys with typed progress and completion events.
+- Implemented string preview byte-cap handling (`STRING_PREVIEW_LIMIT`) and hash safe chunking with cap metadata (`HASH_PREVIEW_LIMIT`, `HASH_ENTRY_LIMIT`).
+- Added explicit missing-key (`type: none`) behavior without crashing the inspect workflow.
+- Added renderer viewer states for large string previews and hash field tables with partial/cap messaging.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/main/ipc/register-handlers.ts`
+- `src/preload/api.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
 - `_bmad-output/implementation-artifacts/2-3-redis-inspect-strings-and-hashes-fetch-minimal-viewer-with-safety-caps.md`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 
 ## Change Log
 
 - 2026-02-10: Created ready-for-dev story context for Epic 2 Story 2.3.
+- 2026-02-10: Implemented Redis string/hash inspector jobs, 1MB safety caps, renderer viewer states, and tests; story moved to review.
