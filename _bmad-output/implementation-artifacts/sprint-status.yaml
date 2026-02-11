@@ -57,7 +57,7 @@ development_status:
   2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps: done
   2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling: done
   2-7-memcached-server-statistics: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
   epic-3: backlog
   3-1-safe-value-preview-limits-and-cap-reached-states: backlog
   3-2-redaction-by-default-safe-preview-mode: backlog
