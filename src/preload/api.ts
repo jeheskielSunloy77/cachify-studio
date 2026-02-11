@@ -72,9 +72,12 @@ import {
   redisInspectProgressEventChannel,
   redisInspectStartChannel,
   type RedisInspectDoneEvent,
+  type RedisInspectCopyRequest,
+  type RedisInspectCopyResponse,
   type RedisInspectProgressEvent,
   type RedisInspectStartRequest,
   type RedisInspectStartResponse,
+  redisInspectCopyChannel,
   type RedisKeysSearchDoneEvent,
   type RedisKeysSearchProgressEvent,
   type RedisKeysSearchStartRequest,
@@ -124,6 +127,7 @@ export interface RendererApi {
   };
   redisInspect?: {
     start: (payload: RedisInspectStartRequest) => Promise<RedisInspectStartResponse>;
+    copy?: (payload: RedisInspectCopyRequest) => Promise<RedisInspectCopyResponse>;
     onProgress: (listener: (event: RedisInspectProgressEvent) => void) => () => void;
     onDone: (listener: (event: RedisInspectDoneEvent) => void) => () => void;
   };
@@ -195,6 +199,7 @@ export const rendererApi: RendererApi = {
   },
   redisInspect: {
     start: async (payload) => ipcRenderer.invoke(redisInspectStartChannel, payload),
+    copy: async (payload) => ipcRenderer.invoke(redisInspectCopyChannel, payload),
     onProgress: (listener) => {
       const wrapped = (_event: unknown, payload: RedisInspectProgressEvent) => listener(payload);
       ipcRenderer.on(redisInspectProgressEventChannel, wrapped);

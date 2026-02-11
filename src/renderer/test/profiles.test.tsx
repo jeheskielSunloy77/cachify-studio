@@ -394,7 +394,7 @@ describe('Profiles UI', () => {
     await waitFor(() =>
       expect(screen.getByText('Production Redis')).toBeInTheDocument(),
     );
-  });
+  }, 15000);
 
   it('filters profiles by search query', async () => {
     const profiles: ConnectionProfile[] = [

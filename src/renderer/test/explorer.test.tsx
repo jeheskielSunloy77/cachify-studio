@@ -222,6 +222,13 @@ const buildApi = (overrides: Partial<RendererApi> = {}): RendererApi => {
           startedAt: new Date().toISOString(),
         }),
       ),
+      copy: vi.fn(async () =>
+        ok({
+          modeUsed: 'safeRedacted' as const,
+          copiedBytes: 12,
+          redactionApplied: true,
+        }),
+      ),
       onProgress: vi.fn(
         (): (() => void) => () => undefined,
       ),
@@ -247,6 +254,7 @@ const buildApi = (overrides: Partial<RendererApi> = {}): RendererApi => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
 });
 
 describe('Redis explorer panel', () => {
@@ -486,11 +494,23 @@ describe('Redis explorer panel', () => {
         capReason: 'STRING_PREVIEW_LIMIT',
         fetchedCount: 1,
         byteLength: 1049000,
+        previewBytes: 1_048_576,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 2,
+          redactionApplied: true,
+        },
         value: 'partial-preview',
       },
     });
 
     expect(await screen.findByText('Cap reached')).toBeInTheDocument();
+    expect(screen.getByText('Redaction active')).toBeInTheDocument();
+    expect(screen.getByText('safe-default-redaction@1.0.0')).toBeInTheDocument();
+    expect(screen.getByText('Too large to preview safely. Showing a partial preview.')).toBeInTheDocument();
     expect(screen.getByText('partial-preview')).toBeInTheDocument();
     expect(screen.getByText('Bytes: 1049000 · Fetched count: 1')).toBeInTheDocument();
 
@@ -504,6 +524,15 @@ describe('Redis explorer panel', () => {
         isPartial: false,
         capReached: false,
         fetchedCount: 2,
+        previewBytes: 24,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
         totalFields: 2,
         nextCursor: '0',
         hasMore: false,
@@ -516,6 +545,1005 @@ describe('Redis explorer panel', () => {
 
     expect(await screen.findByText('fieldA')).toBeInTheDocument();
     expect(screen.getByText('valueB')).toBeInTheDocument();
+  });
+
+  it('shows depth-collapsed indicator when formatted depth cap metadata is present', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-depth',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: async () =>
+          ok({
+            jobId: 'inspect-depth',
+            startedAt: new Date().toISOString(),
+          }),
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-depth',
+      status: 'running',
+      keys: [{ key: 'depth:key', prefixSegments: ['depth', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-depth',
+      status: 'completed',
+      result: {
+        key: 'depth:key',
+        type: 'string',
+        ttlSeconds: -1,
+        isPartial: true,
+        capReached: true,
+        capReason: 'FORMATTED_DEPTH_LIMIT',
+        fetchedCount: 1,
+        byteLength: 280,
+        previewBytes: 280,
+        maxDepthApplied: 20,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        value: '{"child":{"child":"..."}}',
+      },
+    });
+
+    expect(
+      await screen.findByText('Formatted depth collapsed at 20 levels to keep rendering responsive.'),
+    ).toBeInTheDocument();
+  });
+
+  it('requires explicit reveal confirmation and supports re-hide', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const inspectStart = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-redacted', startedAt: new Date().toISOString() }))
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-revealed', startedAt: new Date().toISOString() }))
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-rehide', startedAt: new Date().toISOString() }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-reveal',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-reveal',
+      status: 'running',
+      keys: [{ key: 'reveal:key', prefixSegments: ['reveal', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-redacted',
+      status: 'completed',
+      result: {
+        key: 'reveal:key',
+        type: 'string',
+        ttlSeconds: 20,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 30,
+        previewBytes: 18,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'redacted',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        value: 'password=[REDACTED]',
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Reveal sensitive preview' }));
+    expect(await screen.findByRole('button', { name: 'Confirm reveal' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Confirm reveal' }));
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'reveal:key',
+      revealMode: 'revealed',
+      viewMode: 'raw',
+      decodePipelineId: 'raw-text',
+    });
+
+    onInspectDone?.({
+      jobId: 'inspect-revealed',
+      status: 'completed',
+      result: {
+        key: 'reveal:key',
+        type: 'string',
+        ttlSeconds: 20,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 30,
+        previewBytes: 30,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'revealed',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        value: 'password=actualSecretValue12345',
+      },
+    });
+
+    expect(await screen.findByText('Revealed')).toBeInTheDocument();
+    expect(screen.getByText('password=actualSecretValue12345')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Re-hide' }));
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'reveal:key',
+      revealMode: 'redacted',
+      viewMode: 'raw',
+      decodePipelineId: 'raw-text',
+    });
+  });
+
+  it('re-hides revealed content when switching view modes', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const inspectStart = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-reveal-view', startedAt: new Date().toISOString() }))
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-reveal-view-formatted', startedAt: new Date().toISOString() }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-reveal-view',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-reveal-view',
+      status: 'running',
+      keys: [{ key: 'reveal:view:key', prefixSegments: ['reveal', 'view', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-reveal-view',
+      status: 'completed',
+      result: {
+        key: 'reveal:view:key',
+        type: 'string',
+        ttlSeconds: 20,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 45,
+        previewBytes: 45,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'revealed',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        view: {
+          requestedMode: 'raw',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: true,
+        },
+        decode: {
+          requestedPipelineId: 'raw-text',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'success',
+            message: 'Raw text pipeline active.',
+            suggestedActions: ['use-json-pretty', 'export-raw-partial'],
+          },
+        },
+        value: 'password=visibleSecretValue12345',
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Formatted' }));
+
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'reveal:view:key',
+      revealMode: 'redacted',
+      viewMode: 'formatted',
+      decodePipelineId: 'json-pretty',
+    });
+  });
+
+  it('auto-rehides revealed content when safety mode relocks', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    let onStatusChanged: ((status: Parameters<RendererApi['connections']['onStatusChanged']>[0] extends (s: infer T) => void ? T : never) => void) | null = null;
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      connections: {
+        ...buildApi().connections,
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'profile-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'local',
+            safetyMode: 'unlocked',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+        onStatusChanged: (listener) => {
+          onStatusChanged = listener;
+          return () => undefined;
+        },
+      },
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-relock',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: async () =>
+          ok({
+            jobId: 'inspect-relock',
+            startedAt: new Date().toISOString(),
+          }),
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-relock',
+      status: 'running',
+      keys: [{ key: 'relock:key', prefixSegments: ['relock', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+
+    onInspectDone?.({
+      jobId: 'inspect-relock',
+      status: 'completed',
+      result: {
+        key: 'relock:key',
+        type: 'string',
+        ttlSeconds: 20,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 26,
+        previewBytes: 26,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'revealed',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        value: 'password=visible-secret-value',
+      },
+    });
+
+    expect(await screen.findByText('Revealed')).toBeInTheDocument();
+    expect(screen.getByText('password=visible-secret-value')).toBeInTheDocument();
+
+    onStatusChanged?.({
+      state: 'connected',
+      activeProfileId: 'profile-1',
+      pendingProfileId: null,
+      activeKind: 'redis',
+      environmentLabel: 'local',
+      safetyMode: 'readOnly',
+      safetyUpdatedAt: 'later',
+      lastConnectionError: null,
+      updatedAt: 'later',
+    });
+
+    expect(await screen.findByText('Reveal reset due to safety relock.')).toBeInTheDocument();
+    expect(screen.queryByText('password=visible-secret-value')).not.toBeInTheDocument();
+  });
+
+  it('copies safe-redacted content by default and gates revealed copy behind confirmation', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const inspectCopy = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ modeUsed: 'safeRedacted', copiedBytes: 64, redactionApplied: true }))
+      .mockResolvedValueOnce(ok({ modeUsed: 'explicitRevealed', copiedBytes: 64, redactionApplied: false }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-copy',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: vi.fn(async () =>
+          ok({
+            jobId: 'inspect-copy',
+            startedAt: new Date().toISOString(),
+          }),
+        ),
+        copy: inspectCopy,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-copy',
+      status: 'running',
+      keys: [{ key: 'copy:key', prefixSegments: ['copy', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-copy',
+      status: 'completed',
+      result: {
+        key: 'copy:key',
+        type: 'string',
+        ttlSeconds: 12,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 40,
+        previewBytes: 40,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'revealed',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        view: {
+          requestedMode: 'raw',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: false,
+        },
+        value: 'password=visibleSecretValue12345',
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Copy safe' }));
+    expect(inspectCopy).toHaveBeenLastCalledWith({
+      result: expect.objectContaining({ key: 'copy:key', type: 'string' }),
+      copyMode: 'safeRedacted',
+    });
+    expect(await screen.findByText('Copied safe-redacted value to clipboard.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Copy revealed' }));
+    expect(await screen.findByRole('button', { name: 'Confirm revealed copy' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm revealed copy' }));
+
+    expect(inspectCopy).toHaveBeenLastCalledWith({
+      result: expect.objectContaining({ key: 'copy:key', type: 'string' }),
+      copyMode: 'explicitRevealed',
+    });
+    expect(await screen.findByText('Copied revealed value to clipboard.')).toBeInTheDocument();
+  });
+
+  it('uses persisted decode pipeline preference for new inspect requests', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    const inspectStart = vi.fn(async () =>
+      ok({
+        jobId: 'inspect-pref',
+        startedAt: new Date().toISOString(),
+      }),
+    );
+
+    window.localStorage.setItem('cachify.decodePipelinePreference', 'json-pretty');
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-pref',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: () => () => undefined,
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-pref',
+      status: 'running',
+      keys: [{ key: 'pref:key', prefixSegments: ['pref', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'pref:key',
+      revealMode: 'redacted',
+      viewMode: 'formatted',
+      decodePipelineId: 'json-pretty',
+    });
+  });
+
+  it('toggles raw/formatted modes and restores string preview scroll position', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const inspectStart = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-raw-initial', startedAt: new Date().toISOString() }))
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-formatted', startedAt: new Date().toISOString() }))
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-raw-return', startedAt: new Date().toISOString() }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-view-toggle',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-view-toggle',
+      status: 'running',
+      keys: [{ key: 'view:key', prefixSegments: ['view', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-raw-initial',
+      status: 'completed',
+      result: {
+        key: 'view:key',
+        type: 'string',
+        ttlSeconds: 22,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 80,
+        previewBytes: 80,
+        maxDepthApplied: 20,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        view: {
+          requestedMode: 'raw',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: true,
+        },
+        decode: {
+          requestedPipelineId: 'raw-text',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'success',
+            message: 'Raw text pipeline active.',
+            suggestedActions: ['use-json-pretty', 'export-raw-partial'],
+          },
+        },
+        value: '{"name":"cachify","nested":{"enabled":true}}',
+      },
+    });
+
+    const rawPreview = await screen.findByTestId('redis-string-preview');
+    Object.defineProperty(rawPreview, 'scrollTop', { value: 120, writable: true });
+
+    await user.click(screen.getByRole('button', { name: 'Formatted' }));
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'view:key',
+      revealMode: 'redacted',
+      viewMode: 'formatted',
+      decodePipelineId: 'json-pretty',
+    });
+
+    onInspectDone?.({
+      jobId: 'inspect-formatted',
+      status: 'completed',
+      result: {
+        key: 'view:key',
+        type: 'string',
+        ttlSeconds: 22,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 80,
+        previewBytes: 96,
+        maxDepthApplied: 20,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        view: {
+          requestedMode: 'formatted',
+          activeMode: 'formatted',
+          rawAvailable: true,
+          formattedAvailable: true,
+        },
+        decode: {
+          requestedPipelineId: 'json-pretty',
+          activePipelineId: 'json-pretty',
+          activePipelineLabel: 'JSON pretty',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'success',
+            message: 'JSON pretty pipeline active.',
+            suggestedActions: ['use-raw-text', 'export-raw-partial'],
+          },
+        },
+        value: '{\n  "name": "cachify"\n}',
+      },
+    });
+
+    expect(await screen.findByText('decode: JSON pretty')).toBeInTheDocument();
+
+    const formattedPreview = await screen.findByTestId('redis-string-preview');
+    Object.defineProperty(formattedPreview, 'scrollTop', { value: 64, writable: true });
+
+    await user.click(screen.getByRole('button', { name: 'Raw' }));
+    expect(inspectStart).toHaveBeenLastCalledWith({
+      key: 'view:key',
+      revealMode: 'redacted',
+      viewMode: 'raw',
+      decodePipelineId: 'raw-text',
+    });
+
+    onInspectDone?.({
+      jobId: 'inspect-raw-return',
+      status: 'completed',
+      result: {
+        key: 'view:key',
+        type: 'string',
+        ttlSeconds: 22,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 80,
+        previewBytes: 80,
+        maxDepthApplied: 20,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        view: {
+          requestedMode: 'raw',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: true,
+        },
+        decode: {
+          requestedPipelineId: 'raw-text',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'success',
+            message: 'Raw text pipeline active.',
+            suggestedActions: ['use-json-pretty', 'export-raw-partial'],
+          },
+        },
+        value: '{"name":"cachify","nested":{"enabled":true}}',
+      },
+    });
+
+    const restoredRawPreview = await screen.findByTestId('redis-string-preview');
+    await waitFor(() => {
+      expect(restoredRawPreview.scrollTop).toBe(120);
+    });
+    expect(screen.getAllByText('view:key').length).toBeGreaterThan(0);
+  });
+
+  it('shows formatted-view fallback reason when decode is unavailable', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const inspectStart = vi
+      .fn()
+      .mockResolvedValueOnce(ok({ jobId: 'inspect-fallback-start', startedAt: new Date().toISOString() }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-view-fallback',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-view-fallback',
+      status: 'running',
+      keys: [{ key: 'fallback:key', prefixSegments: ['fallback', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Cancel inspect' })).toBeEnabled(),
+    );
+    onInspectDone?.({
+      jobId: 'inspect-fallback-start',
+      status: 'completed',
+      result: {
+        key: 'fallback:key',
+        type: 'string',
+        ttlSeconds: 14,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 11,
+        previewBytes: 11,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        view: {
+          requestedMode: 'formatted',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: false,
+          formattedUnavailableReason: 'VALUE_NOT_FORMATTABLE_AS_JSON',
+        },
+        decode: {
+          requestedPipelineId: 'json-pretty',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'fallback',
+            message: 'JSON pretty decode failed. Falling back to raw text.',
+            failureCode: 'VALUE_NOT_FORMATTABLE_AS_JSON',
+            suggestedActions: ['use-raw-text', 'export-raw-partial'],
+          },
+        },
+        value: 'plain-value',
+      },
+    });
+
+    expect(
+      await screen.findByText('Value is not valid JSON for formatted view.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Use Raw text' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try JSON pretty' })).toBeInTheDocument();
+  });
+
+  it('shows formatted-view truncated guidance when preview is capped before decode', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-truncated-fallback',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: async () =>
+          ok({
+            jobId: 'inspect-truncated-fallback',
+            startedAt: new Date().toISOString(),
+          }),
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-truncated-fallback',
+      status: 'running',
+      keys: [{ key: 'truncated:key', prefixSegments: ['truncated', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-truncated-fallback',
+      status: 'completed',
+      result: {
+        key: 'truncated:key',
+        type: 'string',
+        ttlSeconds: 14,
+        isPartial: true,
+        capReached: true,
+        capReason: 'STRING_PREVIEW_LIMIT',
+        fetchedCount: 1,
+        byteLength: 1_100_000,
+        previewBytes: 1_048_576,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        view: {
+          requestedMode: 'formatted',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: false,
+          formattedUnavailableReason: 'PREVIEW_TRUNCATED_BEFORE_DECODE',
+        },
+        decode: {
+          requestedPipelineId: 'json-pretty',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'fallback',
+            message: 'JSON pretty decode was skipped because preview was truncated. Falling back to raw text.',
+            failureCode: 'PREVIEW_TRUNCATED_BEFORE_DECODE',
+            suggestedActions: ['use-raw-text', 'export-raw-partial'],
+          },
+        },
+        value: 'partial-preview',
+      },
+    });
+
+    expect(
+      await screen.findByText('Preview was truncated before formatting could run.'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('JSON pretty decode was skipped because preview was truncated. Falling back to raw text.'),
+    ).toBeInTheDocument();
   });
 
   it('renders list/set/zset collection inspector variants and partial messaging', async () => {
@@ -574,6 +1602,15 @@ describe('Redis explorer panel', () => {
         isPartial: true,
         capReached: true,
         capReason: 'COLLECTION_ENTRY_LIMIT',
+        previewBytes: 11,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
         fetchedCount: 2,
         totalCount: 5,
         cursor: '2',
@@ -599,6 +1636,15 @@ describe('Redis explorer panel', () => {
         ttlSeconds: 10,
         isPartial: false,
         capReached: false,
+        previewBytes: 16,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
         fetchedCount: 2,
         totalCount: 2,
         cursor: '0',
@@ -670,6 +1716,15 @@ describe('Redis explorer panel', () => {
         ttlSeconds: 30,
         isPartial: true,
         capReached: false,
+        previewBytes: 17,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
         fetchedCount: 1,
         totalCount: 5,
         truncated: true,
@@ -704,6 +1759,15 @@ describe('Redis explorer panel', () => {
           flags: 7,
           bytes: 11,
           capReached: false,
+          previewBytes: 11,
+          maxDepthApplied: null,
+          redaction: {
+            policyId: 'safe-default-redaction',
+            policyVersion: '1.0.0',
+            policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+            redactedSegments: 0,
+            redactionApplied: false,
+          },
         }),
       );
 
@@ -785,6 +1849,15 @@ describe('Redis explorer panel', () => {
             flags: null,
             bytes: null,
             capReached: false,
+            previewBytes: 0,
+            maxDepthApplied: null,
+            redaction: {
+              policyId: 'safe-default-redaction',
+              policyVersion: '1.0.0',
+              policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+              redactedSegments: 0,
+              redactionApplied: false,
+            },
           }),
         ),
         getStats,

@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Badge } from '@/renderer/components/ui/badge';
 import { Button } from '@/renderer/components/ui/button';
 import { Input } from '@/renderer/components/ui/input';
 import { Label } from '@/renderer/components/ui/label';
 import type {
   ConnectionStatus,
+  InspectorDecodePipelineId,
   MemcachedGetResponse,
   MemcachedStatsGetResponse,
   RedisInspectDoneEvent,
@@ -94,6 +95,35 @@ const resolveInspectorTtlLabel = (ttlSeconds: number | null) => {
   return 'unavailable';
 };
 
+const resolveFormattedUnavailableReason = (reason?: string) => {
+  if (reason === 'VALUE_NOT_FORMATTABLE_AS_JSON') {
+    return 'Value is not valid JSON for formatted view.';
+  }
+  if (reason === 'PREVIEW_TRUNCATED_BEFORE_DECODE') {
+    return 'Preview was truncated before formatting could run.';
+  }
+  if (reason === 'TYPE_HAS_NO_FORMATTED_VIEW') {
+    return 'Formatted view is not available for this Redis type.';
+  }
+  return 'Formatted view is unavailable for this payload.';
+};
+
+const DECODE_PIPELINE_PREFERENCE_KEY = 'cachify.decodePipelinePreference';
+const DEFAULT_DECODE_PIPELINE: InspectorDecodePipelineId = 'raw-text';
+const JSON_PRETTY_PIPELINE: InspectorDecodePipelineId = 'json-pretty';
+
+const decodePipelineToViewMode = (pipelineId: InspectorDecodePipelineId): 'raw' | 'formatted' =>
+  pipelineId === JSON_PRETTY_PIPELINE ? 'formatted' : 'raw';
+
+const readDecodePipelinePreference = (): InspectorDecodePipelineId => {
+  try {
+    const value = window.localStorage.getItem(DECODE_PIPELINE_PREFERENCE_KEY);
+    return value === JSON_PRETTY_PIPELINE ? JSON_PRETTY_PIPELINE : DEFAULT_DECODE_PIPELINE;
+  } catch {
+    return DEFAULT_DECODE_PIPELINE;
+  }
+};
+
 type RedisExplorerPanelProps = {
   connectionStatus: ConnectionStatus;
 };
@@ -115,11 +145,25 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [inspectedKey, setInspectedKey] = useState<string | null>(null);
   const [inspectResult, setInspectResult] = useState<RedisInspectorResult | null>(null);
   const [inspectMessage, setInspectMessage] = useState<string | null>(null);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [copyConfirmRevealed, setCopyConfirmRevealed] = useState(false);
+  const [preferredDecodePipelineId, setPreferredDecodePipelineId] = useState<InspectorDecodePipelineId>(
+    () => readDecodePipelinePreference(),
+  );
+  const [revealConfirmPending, setRevealConfirmPending] = useState(false);
+  const stringPreviewRef = useRef<HTMLPreElement | null>(null);
+  const inspectJobIdRef = useRef<string | null>(null);
+  const stringPreviewScrollByMode = useRef<{ raw: number; formatted: number }>({
+    raw: 0,
+    formatted: 0,
+  });
   const [memcachedKey, setMemcachedKey] = useState('');
   const [memcachedLoading, setMemcachedLoading] = useState(false);
   const [memcachedResult, setMemcachedResult] = useState<MemcachedGetData | null>(null);
   const [memcachedStats, setMemcachedStats] = useState<MemcachedStatsData | null>(null);
   const [memcachedMessage, setMemcachedMessage] = useState<string | null>(null);
+  const previousSafetyMode = useRef(connectionStatus.safetyMode);
+  const stringPreviewValue = inspectResult?.type === 'string' ? inspectResult.value : null;
 
   const canSearch =
     connectionStatus.state === 'connected' && connectionStatus.activeKind === 'redis';
@@ -191,12 +235,48 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   }, [explorerApiAvailable, redisKeysApi, runningJobId]);
 
   useEffect(() => {
+    const revealMode = inspectResult?.reveal?.mode ?? 'redacted';
+    const disconnected = connectionStatus.state !== 'connected';
+    const relocked =
+      previousSafetyMode.current === 'unlocked' && connectionStatus.safetyMode === 'readOnly';
+
+    if (revealMode === 'revealed' && (disconnected || relocked)) {
+      setRevealConfirmPending(false);
+      setInspectResult(null);
+      setInspectMessage(
+        disconnected ? 'Reveal reset due to disconnect.' : 'Reveal reset due to safety relock.',
+      );
+    }
+
+    previousSafetyMode.current = connectionStatus.safetyMode;
+  }, [connectionStatus.safetyMode, connectionStatus.state, inspectResult?.reveal?.mode]);
+
+  useEffect(() => {
+    if (inspectResult?.type !== 'string' || !inspectResult.view) {
+      return;
+    }
+    const preview = stringPreviewRef.current;
+    if (!preview) {
+      return;
+    }
+    preview.scrollTop = stringPreviewScrollByMode.current[inspectResult.view.activeMode];
+  }, [inspectResult?.type, stringPreviewValue, inspectResult?.view]);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(DECODE_PIPELINE_PREFERENCE_KEY, preferredDecodePipelineId);
+    } catch {
+      // Ignore preference persistence errors in constrained renderer environments.
+    }
+  }, [preferredDecodePipelineId]);
+
+  useEffect(() => {
     if (!inspectorApiAvailable || !redisInspectApi?.onProgress || !redisInspectApi?.onDone) {
       return;
     }
 
     const unsubscribeProgress = redisInspectApi.onProgress((event: RedisInspectProgressEvent) => {
-      if (!inspectJobId || event.jobId !== inspectJobId) {
+      if (!inspectJobIdRef.current || event.jobId !== inspectJobIdRef.current) {
         return;
       }
       setInspectResult(event.result);
@@ -204,9 +284,10 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     });
 
     const unsubscribeDone = redisInspectApi.onDone((event: RedisInspectDoneEvent) => {
-      if (!inspectJobId || event.jobId !== inspectJobId) {
+      if (!inspectJobIdRef.current || event.jobId !== inspectJobIdRef.current) {
         return;
       }
+      inspectJobIdRef.current = null;
       setInspectJobId(null);
       if (event.result) {
         setInspectResult(event.result);
@@ -224,7 +305,7 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
       unsubscribeProgress();
       unsubscribeDone();
     };
-  }, [inspectJobId, inspectorApiAvailable, redisInspectApi]);
+  }, [inspectorApiAvailable, redisInspectApi]);
 
   const startSearch = async () => {
     if (!canSearch || !redisKeysApi?.startSearch) {
@@ -259,18 +340,35 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     await jobsApi.cancel({ jobId: runningJobId });
   };
 
-  const startInspect = async (key: string) => {
+  const startInspect = async (
+    key: string,
+    revealMode: 'redacted' | 'revealed' = 'redacted',
+    viewMode: 'raw' | 'formatted' = 'raw',
+    decodePipelineId: InspectorDecodePipelineId = viewMode === 'formatted'
+      ? JSON_PRETTY_PIPELINE
+      : DEFAULT_DECODE_PIPELINE,
+  ) => {
     if (!inspectorApiAvailable || !redisInspectApi?.start) {
       return;
     }
-    const response = await redisInspectApi.start({ key });
+    const response = await redisInspectApi.start({ key, revealMode, viewMode, decodePipelineId });
     if ('error' in response) {
       setInspectMessage(response.error.message);
       return;
     }
+    setRevealConfirmPending(false);
+    setCopyConfirmRevealed(false);
+    setCopyMessage(null);
     setInspectedKey(key);
     setInspectResult(null);
-    setInspectMessage('Inspect started.');
+    inspectJobIdRef.current = response.data.jobId;
+    setInspectMessage(
+      revealMode === 'revealed'
+        ? 'Reveal requested. Inspect started.'
+        : viewMode === 'formatted'
+          ? 'Formatted inspect started.'
+          : 'Inspect started.',
+    );
     setInspectJobId(response.data.jobId);
   };
 
@@ -279,6 +377,26 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
       return;
     }
     await jobsApi.cancel({ jobId: inspectJobId });
+  };
+
+  const copyInspectedValue = async (copyMode: 'safeRedacted' | 'explicitRevealed') => {
+    if (!inspectResult || !redisInspectApi?.copy) {
+      return;
+    }
+    const response = await redisInspectApi.copy({
+      result: inspectResult,
+      copyMode,
+    });
+    if ('error' in response) {
+      setCopyMessage(response.error.message);
+      return;
+    }
+    setCopyConfirmRevealed(false);
+    setCopyMessage(
+      response.data.modeUsed === 'safeRedacted'
+        ? 'Copied safe-redacted value to clipboard.'
+        : 'Copied revealed value to clipboard.',
+    );
   };
 
   const fetchMemcachedByKey = async () => {
@@ -316,6 +434,13 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     setMemcachedMessage(`Stats refreshed at ${new Date(response.data.fetchedAt).toLocaleTimeString()}.`);
     setMemcachedLoading(false);
   };
+
+  const revealMode = inspectResult?.reveal?.mode ?? 'redacted';
+  const revealModeForViewChange = revealMode === 'revealed' ? 'redacted' : revealMode;
+  const activeViewMode = inspectResult?.view?.activeMode ?? 'raw';
+  const requestedDecodePipelineId =
+    inspectResult?.decode?.requestedPipelineId ?? preferredDecodePipelineId;
+  const canReveal = inspectResult?.reveal?.canReveal ?? false;
 
   return (
     <section className='grid gap-4 rounded-xl border border-border bg-card p-4'>
@@ -443,7 +568,12 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                         size='sm'
                         variant='outline'
                         onClick={() => {
-                          void startInspect(item.key);
+                          void startInspect(
+                            item.key,
+                            'redacted',
+                            decodePipelineToViewMode(preferredDecodePipelineId),
+                            preferredDecodePipelineId,
+                          );
                         }}
                         disabled={!inspectorApiAvailable || Boolean(inspectJobId)}
                       >
@@ -474,21 +604,275 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                 {inspectResult?.capReached ? (
                   <Badge variant='secondary'>Cap reached</Badge>
                 ) : null}
+                {inspectResult ? (
+                  <Badge variant={inspectResult.redaction.redactionApplied ? 'secondary' : 'outline'}>
+                    {inspectResult.redaction.redactionApplied ? 'Redaction active' : 'Redaction default'}
+                  </Badge>
+                ) : null}
+                {inspectResult ? (
+                  <Badge variant='outline' title={inspectResult.redaction.policySummary}>
+                    {inspectResult.redaction.policyId}@{inspectResult.redaction.policyVersion}
+                  </Badge>
+                ) : null}
+                {inspectResult?.view ? (
+                  <Badge variant='outline'>view: {inspectResult.view.activeMode}</Badge>
+                ) : null}
+                {inspectResult?.decode ? (
+                  <Badge variant='outline'>decode: {inspectResult.decode.activePipelineLabel}</Badge>
+                ) : null}
+                {inspectResult?.reveal?.mode === 'revealed' ? (
+                  <Badge variant='secondary'>Revealed</Badge>
+                ) : null}
               </div>
-              <Button
-                size='sm'
-                variant='outline'
-                onClick={() => {
-                  void cancelInspect();
-                }}
-                disabled={!inspectJobId}
-              >
-                Cancel inspect
-              </Button>
+              <div className='flex items-center gap-2'>
+                {inspectResult?.view ? (
+                  <>
+                    <Button
+                      size='sm'
+                      variant={inspectResult.view.activeMode === 'raw' ? 'secondary' : 'outline'}
+                      onClick={() => {
+                        if (!inspectedKey) {
+                          return;
+                        }
+                        setPreferredDecodePipelineId(DEFAULT_DECODE_PIPELINE);
+                        if (inspectResult.type === 'string' && stringPreviewRef.current) {
+                          stringPreviewScrollByMode.current[activeViewMode] =
+                            stringPreviewRef.current.scrollTop;
+                        }
+                        void startInspect(
+                          inspectedKey,
+                          revealModeForViewChange,
+                          'raw',
+                          DEFAULT_DECODE_PIPELINE,
+                        );
+                      }}
+                      disabled={Boolean(inspectJobId)}
+                    >
+                      Raw
+                    </Button>
+                    <Button
+                      size='sm'
+                      variant={inspectResult.view.activeMode === 'formatted' ? 'secondary' : 'outline'}
+                      onClick={() => {
+                        if (!inspectedKey) {
+                          return;
+                        }
+                        setPreferredDecodePipelineId(JSON_PRETTY_PIPELINE);
+                        if (inspectResult.type === 'string' && stringPreviewRef.current) {
+                          stringPreviewScrollByMode.current[activeViewMode] =
+                            stringPreviewRef.current.scrollTop;
+                        }
+                        void startInspect(
+                          inspectedKey,
+                          revealModeForViewChange,
+                          'formatted',
+                          JSON_PRETTY_PIPELINE,
+                        );
+                      }}
+                      disabled={Boolean(inspectJobId)}
+                    >
+                      Formatted
+                    </Button>
+                  </>
+                ) : null}
+                {inspectResult && canReveal ? (
+                  inspectResult.reveal?.mode === 'revealed' ? (
+                    <Button
+                      size='sm'
+                      variant='secondary'
+                      aria-pressed='true'
+                      onClick={() => {
+                        if (inspectedKey) {
+                          void startInspect(
+                            inspectedKey,
+                            'redacted',
+                            activeViewMode,
+                            requestedDecodePipelineId,
+                          );
+                        }
+                      }}
+                      disabled={Boolean(inspectJobId)}
+                    >
+                      Re-hide
+                    </Button>
+                  ) : (
+                    <Button
+                      size='sm'
+                      variant='outline'
+                      aria-pressed='false'
+                      onClick={() => {
+                        setRevealConfirmPending(true);
+                      }}
+                      disabled={Boolean(inspectJobId)}
+                    >
+                      Reveal sensitive preview
+                    </Button>
+                  )
+                ) : null}
+                {inspectResult ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => {
+                      void copyInspectedValue('safeRedacted');
+                    }}
+                    disabled={Boolean(inspectJobId) || !redisInspectApi?.copy}
+                  >
+                    Copy safe
+                  </Button>
+                ) : null}
+                {inspectResult?.reveal?.mode === 'revealed' ? (
+                  <Button
+                    size='sm'
+                    variant='secondary'
+                    onClick={() => {
+                      setCopyConfirmRevealed(true);
+                    }}
+                    disabled={Boolean(inspectJobId) || !redisInspectApi?.copy}
+                  >
+                    Copy revealed
+                  </Button>
+                ) : null}
+                <Button
+                  size='sm'
+                  variant='outline'
+                  onClick={() => {
+                    void cancelInspect();
+                  }}
+                  disabled={!inspectJobId}
+                >
+                  Cancel inspect
+                </Button>
+              </div>
             </div>
+
+            {revealConfirmPending && revealMode === 'redacted' ? (
+              <div className='mb-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900'>
+                <span>
+                  Confirm reveal for this key. Revealed values auto-reset on key change,
+                  view switch, navigation, disconnect, and safety relock.
+                </span>
+                <Button
+                  size='sm'
+                  variant='secondary'
+                  onClick={() => {
+                    if (inspectedKey) {
+                      void startInspect(
+                        inspectedKey,
+                        'revealed',
+                        activeViewMode,
+                        requestedDecodePipelineId,
+                      );
+                    }
+                  }}
+                  disabled={!inspectedKey || Boolean(inspectJobId)}
+                >
+                  Confirm reveal
+                </Button>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={() => {
+                    setRevealConfirmPending(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
+
+            {copyConfirmRevealed && inspectResult?.reveal?.mode === 'revealed' ? (
+              <div className='mb-2 flex flex-wrap items-center gap-2 rounded border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900'>
+                <span>
+                  Confirm copying revealed content. Safe copy remains the default for sharing.
+                </span>
+                <Button
+                  size='sm'
+                  variant='secondary'
+                  onClick={() => {
+                    void copyInspectedValue('explicitRevealed');
+                  }}
+                  disabled={Boolean(inspectJobId) || !redisInspectApi?.copy}
+                >
+                  Confirm revealed copy
+                </Button>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={() => {
+                    setCopyConfirmRevealed(false);
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            ) : null}
 
             {inspectMessage ? (
               <p className='mb-2 text-xs text-muted-foreground'>{inspectMessage}</p>
+            ) : null}
+            {copyMessage ? (
+              <p className='mb-2 text-xs text-emerald-700'>{copyMessage}</p>
+            ) : null}
+            {inspectResult ? (
+              <p className='mb-2 text-xs text-muted-foreground'>
+                {inspectResult.redaction.redactionApplied
+                  ? `Redacted ${inspectResult.redaction.redactedSegments} sensitive segment(s).`
+                  : 'Redaction policy active; no sensitive segments matched this preview.'}
+              </p>
+            ) : null}
+            {inspectResult?.view?.requestedMode === 'formatted' &&
+            !inspectResult.view.formattedAvailable ? (
+              <div className='mb-2 grid gap-2 rounded border border-amber-500/30 bg-amber-50 p-2 text-xs text-amber-900'>
+                <p>
+                  {resolveFormattedUnavailableReason(inspectResult.view.formattedUnavailableReason)}
+                </p>
+                <p>
+                  {inspectResult.decode?.stage.message ??
+                    'Decode fallback applied. Use a safe fallback action below.'}
+                </p>
+                <div className='flex flex-wrap items-center gap-2'>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => {
+                      if (!inspectedKey) {
+                        return;
+                      }
+                      setPreferredDecodePipelineId(DEFAULT_DECODE_PIPELINE);
+                      void startInspect(
+                        inspectedKey,
+                        revealModeForViewChange,
+                        'raw',
+                        DEFAULT_DECODE_PIPELINE,
+                      );
+                    }}
+                    disabled={Boolean(inspectJobId) || !inspectedKey}
+                  >
+                    Use Raw text
+                  </Button>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => {
+                      if (!inspectedKey) {
+                        return;
+                      }
+                      setPreferredDecodePipelineId(JSON_PRETTY_PIPELINE);
+                      void startInspect(
+                        inspectedKey,
+                        revealModeForViewChange,
+                        'formatted',
+                        JSON_PRETTY_PIPELINE,
+                      );
+                    }}
+                    disabled={Boolean(inspectJobId) || !inspectedKey}
+                  >
+                    Try JSON pretty
+                  </Button>
+                  <span>Need to share now? Use Copy safe for a redacted export.</span>
+                </div>
+              </div>
             ) : null}
 
             {!inspectResult ? (
@@ -502,7 +886,25 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                 <p className='text-xs text-muted-foreground'>
                   Bytes: {inspectResult.byteLength} · Fetched count: {inspectResult.fetchedCount}
                 </p>
-                <pre className='max-h-56 overflow-auto rounded border border-border/60 bg-muted/50 p-2 text-xs'>
+                <p className='text-xs text-muted-foreground'>
+                  Preview bytes: {inspectResult.previewBytes}
+                </p>
+                {inspectResult.capReason === 'STRING_PREVIEW_LIMIT' ? (
+                  <p className='text-xs text-amber-700'>
+                    Too large to preview safely. Showing a partial preview.
+                  </p>
+                ) : null}
+                {inspectResult.capReason === 'FORMATTED_DEPTH_LIMIT' ? (
+                  <p className='text-xs text-amber-700'>
+                    Formatted depth collapsed at {inspectResult.maxDepthApplied ?? 20} levels to
+                    keep rendering responsive.
+                  </p>
+                ) : null}
+                <pre
+                  ref={stringPreviewRef}
+                  data-testid='redis-string-preview'
+                  className='max-h-56 overflow-auto rounded border border-border/60 bg-muted/50 p-2 text-xs'
+                >
                   {inspectResult.value}
                 </pre>
               </div>
@@ -703,10 +1105,19 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                   </pre>
                 ) : null}
                 {memcachedResult.capReached ? (
-                  <p className='mt-1 text-muted-foreground'>
-                    Preview truncated safely ({memcachedResult.capReason ?? 'MEMCACHED_PREVIEW_LIMIT'}).
+                  <p className='mt-1 text-amber-700'>
+                    Too large to preview safely. Showing a partial preview (
+                    {memcachedResult.capReason ?? 'MEMCACHED_PREVIEW_LIMIT'}).
                   </p>
                 ) : null}
+                <p className='mt-1 text-muted-foreground'>
+                  preview bytes: {memcachedResult.previewBytes}
+                </p>
+                <p className='mt-1 text-muted-foreground'>
+                  {memcachedResult.redaction.redactionApplied
+                    ? `Redaction active: ${memcachedResult.redaction.redactedSegments} segment(s) masked (${memcachedResult.redaction.policyId}@${memcachedResult.redaction.policyVersion}).`
+                    : `Redaction policy: ${memcachedResult.redaction.policyId}@${memcachedResult.redaction.policyVersion}.`}
+                </p>
               </div>
             ) : null}
 
