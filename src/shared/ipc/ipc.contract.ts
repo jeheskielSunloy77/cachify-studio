@@ -75,6 +75,7 @@ export const redisKeysSearchDoneEventChannel = 'redisKeys:search:done' as const;
 export const redisInspectStartChannel = 'redisInspect:start' as const;
 export const redisInspectProgressEventChannel = 'redisInspect:progress' as const;
 export const redisInspectDoneEventChannel = 'redisInspect:done' as const;
+export const redisInspectCopyChannel = 'redisInspect:copy' as const;
 export const memcachedGetChannel = 'memcached:get' as const;
 export const memcachedStatsGetChannel = 'memcached:stats:get' as const;
 
@@ -392,6 +393,9 @@ export const redisKeysSearchDoneEventSchema = z
 export const redisInspectStartRequestSchema = z
   .object({
     key: z.string().trim().min(1).max(2048),
+    revealMode: z.enum(['redacted', 'revealed']).optional(),
+    viewMode: z.enum(['raw', 'formatted']).optional(),
+    decodePipelineId: z.enum(['raw-text', 'json-pretty']).optional(),
     hashChunkSize: z.number().int().min(1).max(2000).optional(),
     collectionChunkSize: z.number().int().min(1).max(2000).optional(),
     streamCount: z.number().int().min(1).max(5000).optional(),
@@ -419,6 +423,85 @@ export const redisHashFieldEntrySchema = z
   })
   .strict();
 
+export const redactionMetadataSchema = z
+  .object({
+    policyId: z.string().min(1),
+    policyVersion: z.string().min(1),
+    policySummary: z.string().min(1),
+    redactedSegments: z.number().int().nonnegative(),
+    redactionApplied: z.boolean(),
+  })
+  .strict();
+
+export const revealResetTriggerSchema = z.enum([
+  'key-change',
+  'view-switch',
+  'navigation',
+  'disconnect',
+  'safety-relock',
+]);
+
+export const revealStateSchema = z
+  .object({
+    mode: z.enum(['redacted', 'revealed']),
+    canReveal: z.boolean(),
+    explicitInteractionRequired: z.literal(true),
+    autoResetTriggers: z.array(revealResetTriggerSchema),
+  })
+  .strict();
+
+export const inspectorViewStateSchema = z
+  .object({
+    requestedMode: z.enum(['raw', 'formatted']),
+    activeMode: z.enum(['raw', 'formatted']),
+    rawAvailable: z.literal(true),
+    formattedAvailable: z.boolean(),
+    formattedUnavailableReason: z.string().optional(),
+  })
+  .strict();
+
+export const inspectorDecodePipelineIdSchema = z.enum(['raw-text', 'json-pretty']);
+
+export const inspectorDecodeActionSchema = z.enum([
+  'use-raw-text',
+  'use-json-pretty',
+  'export-raw-partial',
+]);
+
+export const inspectorDecodeFailureCodeSchema = z.enum([
+  'VALUE_NOT_FORMATTABLE_AS_JSON',
+  'PREVIEW_TRUNCATED_BEFORE_DECODE',
+  'TYPE_HAS_NO_PIPELINE',
+]);
+
+export const inspectorDecodePipelineOptionSchema = z
+  .object({
+    id: inspectorDecodePipelineIdSchema,
+    label: z.string().min(1),
+    supported: z.boolean(),
+    unsupportedReason: z.string().optional(),
+  })
+  .strict();
+
+export const inspectorDecodeStageSchema = z
+  .object({
+    status: z.enum(['success', 'fallback']),
+    message: z.string().min(1),
+    failureCode: inspectorDecodeFailureCodeSchema.optional(),
+    suggestedActions: z.array(inspectorDecodeActionSchema),
+  })
+  .strict();
+
+export const inspectorDecodeStateSchema = z
+  .object({
+    requestedPipelineId: inspectorDecodePipelineIdSchema,
+    activePipelineId: inspectorDecodePipelineIdSchema,
+    activePipelineLabel: z.string().min(1),
+    pipelines: z.array(inspectorDecodePipelineOptionSchema),
+    stage: inspectorDecodeStageSchema,
+  })
+  .strict();
+
 export const redisInspectorStringResultSchema = z
   .object({
     key: z.string().min(1),
@@ -427,6 +510,12 @@ export const redisInspectorStringResultSchema = z
     isPartial: z.boolean(),
     capReached: z.boolean(),
     capReason: z.string().optional(),
+    previewBytes: z.number().int().nonnegative(),
+    maxDepthApplied: z.number().int().positive().nullable(),
+    redaction: redactionMetadataSchema,
+    reveal: revealStateSchema.optional(),
+    view: inspectorViewStateSchema.optional(),
+    decode: inspectorDecodeStateSchema.optional(),
     fetchedCount: z.number().int().nonnegative(),
     byteLength: z.number().int().nonnegative(),
     value: z.string(),
@@ -441,6 +530,12 @@ export const redisInspectorHashResultSchema = z
     isPartial: z.boolean(),
     capReached: z.boolean(),
     capReason: z.string().optional(),
+    previewBytes: z.number().int().nonnegative(),
+    maxDepthApplied: z.number().int().positive().nullable(),
+    redaction: redactionMetadataSchema,
+    reveal: revealStateSchema.optional(),
+    view: inspectorViewStateSchema.optional(),
+    decode: inspectorDecodeStateSchema.optional(),
     fetchedCount: z.number().int().nonnegative(),
     totalFields: z.number().int().nonnegative().nullable(),
     nextCursor: z.string(),
@@ -463,6 +558,12 @@ const redisInspectorCollectionCommonSchema = z
     isPartial: z.boolean(),
     capReached: z.boolean(),
     capReason: z.string().optional(),
+    previewBytes: z.number().int().nonnegative(),
+    maxDepthApplied: z.number().int().positive().nullable(),
+    redaction: redactionMetadataSchema,
+    reveal: revealStateSchema.optional(),
+    view: inspectorViewStateSchema.optional(),
+    decode: inspectorDecodeStateSchema.optional(),
     fetchedCount: z.number().int().nonnegative(),
     totalCount: z.number().int().nonnegative().nullable(),
     cursor: z.string(),
@@ -509,6 +610,12 @@ export const redisInspectorStreamResultSchema = z
     isPartial: z.boolean(),
     capReached: z.boolean(),
     capReason: z.string().optional(),
+    previewBytes: z.number().int().nonnegative(),
+    maxDepthApplied: z.number().int().positive().nullable(),
+    redaction: redactionMetadataSchema,
+    reveal: revealStateSchema.optional(),
+    view: inspectorViewStateSchema.optional(),
+    decode: inspectorDecodeStateSchema.optional(),
     fetchedCount: z.number().int().nonnegative(),
     totalCount: z.number().int().nonnegative().nullable(),
     truncated: z.boolean(),
@@ -523,6 +630,12 @@ export const redisInspectorNoneResultSchema = z
     ttlSeconds: z.number().int().nullable(),
     isPartial: z.literal(false),
     capReached: z.literal(false),
+    previewBytes: z.literal(0),
+    maxDepthApplied: z.null(),
+    redaction: redactionMetadataSchema,
+    reveal: revealStateSchema.optional(),
+    view: inspectorViewStateSchema.optional(),
+    decode: inspectorDecodeStateSchema.optional(),
     fetchedCount: z.literal(0),
     reason: z.string(),
   })
@@ -554,6 +667,26 @@ export const redisInspectDoneEventSchema = z
     error: ipcErrorSchema.optional(),
   })
   .strict();
+
+export const redisInspectCopyRequestSchema = z
+  .object({
+    result: redisInspectorResultSchema,
+    copyMode: z.enum(['safeRedacted', 'explicitRevealed']).default('safeRedacted'),
+  })
+  .strict();
+
+export const redisInspectCopyDataSchema = z
+  .object({
+    modeUsed: z.enum(['safeRedacted', 'explicitRevealed']),
+    copiedBytes: z.number().int().nonnegative(),
+    redactionApplied: z.boolean(),
+  })
+  .strict();
+
+export const redisInspectCopyResponseSchema = z.union([
+  okEnvelopeSchema(redisInspectCopyDataSchema),
+  errorEnvelopeSchema,
+]);
 
 export const memcachedGetRequestSchema = z
   .object({
@@ -587,6 +720,9 @@ export const memcachedGetDataSchema = z
     bytes: z.number().int().nullable(),
     capReached: z.boolean(),
     capReason: z.string().optional(),
+    previewBytes: z.number().int().nonnegative(),
+    maxDepthApplied: z.number().int().positive().nullable(),
+    redaction: redactionMetadataSchema,
   })
   .strict();
 
@@ -741,6 +877,12 @@ export const ipcContract = {
     responseSchema: redisInspectStartResponseSchema,
     description: 'Start Redis key inspect job for string/hash values.',
   },
+  redisInspectCopy: {
+    channel: redisInspectCopyChannel,
+    requestSchema: redisInspectCopyRequestSchema,
+    responseSchema: redisInspectCopyResponseSchema,
+    description: 'Copy inspected Redis value in safe-redacted form by default.',
+  },
   memcachedGet: {
     channel: memcachedGetChannel,
     requestSchema: memcachedGetRequestSchema,
@@ -810,6 +952,15 @@ export type RedisKeysSearchProgressEvent = z.infer<typeof redisKeysSearchProgres
 export type RedisKeysSearchDoneEvent = z.infer<typeof redisKeysSearchDoneEventSchema>;
 export type RedisInspectStartRequest = z.infer<typeof redisInspectStartRequestSchema>;
 export type RedisInspectStartResponse = z.infer<typeof redisInspectStartResponseSchema>;
+export type RevealResetTrigger = z.infer<typeof revealResetTriggerSchema>;
+export type RevealState = z.infer<typeof revealStateSchema>;
+export type InspectorViewState = z.infer<typeof inspectorViewStateSchema>;
+export type InspectorDecodePipelineId = z.infer<typeof inspectorDecodePipelineIdSchema>;
+export type InspectorDecodeAction = z.infer<typeof inspectorDecodeActionSchema>;
+export type InspectorDecodeFailureCode = z.infer<typeof inspectorDecodeFailureCodeSchema>;
+export type InspectorDecodePipelineOption = z.infer<typeof inspectorDecodePipelineOptionSchema>;
+export type InspectorDecodeStage = z.infer<typeof inspectorDecodeStageSchema>;
+export type InspectorDecodeState = z.infer<typeof inspectorDecodeStateSchema>;
 export type RedisHashFieldEntry = z.infer<typeof redisHashFieldEntrySchema>;
 export type RedisInspectorStringResult = z.infer<typeof redisInspectorStringResultSchema>;
 export type RedisInspectorHashResult = z.infer<typeof redisInspectorHashResultSchema>;
@@ -824,6 +975,8 @@ export type RedisInspectorNoneResult = z.infer<typeof redisInspectorNoneResultSc
 export type RedisInspectorResult = z.infer<typeof redisInspectorResultSchema>;
 export type RedisInspectProgressEvent = z.infer<typeof redisInspectProgressEventSchema>;
 export type RedisInspectDoneEvent = z.infer<typeof redisInspectDoneEventSchema>;
+export type RedisInspectCopyRequest = z.infer<typeof redisInspectCopyRequestSchema>;
+export type RedisInspectCopyResponse = z.infer<typeof redisInspectCopyResponseSchema>;
 export type MemcachedGetRequest = z.infer<typeof memcachedGetRequestSchema>;
 export type MemcachedGetResponse = z.infer<typeof memcachedGetResponseSchema>;
 export type MemcachedStatsGetRequest = z.infer<typeof memcachedStatsGetRequestSchema>;

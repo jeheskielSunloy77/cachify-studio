@@ -1,6 +1,24 @@
 import type { MemcachedGetResult, MemcachedStatsResult } from '../clients/memcached.client';
+import {
+  buildRedactionMetadata,
+  redactPreviewText,
+  type RedactionMetadata,
+} from '../../security/redaction';
 
 const DEFAULT_MAX_PREVIEW_BYTES = 1_048_576;
+
+type MemcachedPreviewResult = {
+  key: string;
+  found: boolean;
+  valuePreview: string | null;
+  flags: number | null;
+  bytes: number | null;
+  capReached: boolean;
+  capReason?: string;
+  previewBytes: number;
+  maxDepthApplied: number | null;
+  redaction: RedactionMetadata;
+};
 
 const truncateUtf8ByBytes = (value: string, maxBytes: number) => {
   const bytes = Buffer.byteLength(value, 'utf8');
@@ -24,7 +42,7 @@ export const normalizeMemcachedGetResult = (
   key: string,
   result: MemcachedGetResult,
   maxPreviewBytes = DEFAULT_MAX_PREVIEW_BYTES,
-) => {
+): MemcachedPreviewResult => {
   if (!result.found) {
     return {
       key,
@@ -33,17 +51,25 @@ export const normalizeMemcachedGetResult = (
       flags: null,
       bytes: null,
       capReached: false,
+      previewBytes: 0,
+      maxDepthApplied: null,
+      redaction: buildRedactionMetadata(0),
     };
   }
 
   const truncated = truncateUtf8ByBytes(result.value, maxPreviewBytes);
+  const redactedPreview = redactPreviewText(truncated.value);
+  const previewBytes = Buffer.byteLength(redactedPreview.value, 'utf8');
   return {
     key,
     found: true,
-    valuePreview: truncated.value,
+    valuePreview: redactedPreview.value,
     flags: result.flags,
     bytes: result.bytes ?? truncated.bytes,
     capReached: truncated.capReached,
+    previewBytes,
+    maxDepthApplied: null,
+    redaction: redactedPreview.metadata,
     ...(truncated.capReached ? { capReason: 'MEMCACHED_PREVIEW_LIMIT' } : {}),
   };
 };
@@ -54,4 +80,3 @@ export const normalizeMemcachedStatsResult = (stats: MemcachedStatsResult) => ({
     .slice()
     .sort((left, right) => left.key.localeCompare(right.key)),
 });
-

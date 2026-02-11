@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { BrowserWindow, clipboard, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
 	appPingChannel,
 	appPingRequestSchema,
@@ -65,6 +65,9 @@ import {
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
 	redisInspectDoneEventChannel,
+	redisInspectCopyChannel,
+	redisInspectCopyRequestSchema,
+	redisInspectCopyResponseSchema,
 	redisInspectDoneEventSchema,
 	redisInspectProgressEventChannel,
 	redisInspectProgressEventSchema,
@@ -100,6 +103,7 @@ import {
 	type ProfilesToggleFavoriteResponse,
 	type ProfilesUpdateResponse,
 	type RedisInspectStartResponse,
+	type RedisInspectCopyResponse,
 	type RedisKeysSearchStartResponse,
 } from '../../shared/ipc/ipc.contract'
 import { getPingPayload } from '../domain/app.service'
@@ -108,7 +112,10 @@ import {
 	normalizeMemcachedGetResult,
 	normalizeMemcachedStatsResult,
 } from '../domain/cache/inspector/memcached-inspector.service'
-import { runRedisInspectJob } from '../domain/cache/inspector/redis-inspector.service'
+import {
+	buildRedisInspectCopyPayload,
+	runRedisInspectJob,
+} from '../domain/cache/inspector/redis-inspector.service'
 import { connectionSessionService } from '../domain/cache/session/connection-session.service'
 import { getPersistenceStatus } from '../domain/persistence/db/connection'
 import { profilesService } from '../domain/persistence/services/connection-profiles.service'
@@ -891,6 +898,39 @@ const handleRedisInspectStart = async (
 	)
 }
 
+const handleRedisInspectCopy = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisInspectCopyResponse> => {
+	const parsed = redisInspectCopyRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisInspect:copy',
+			parsed.error.flatten(),
+		) as RedisInspectCopyResponse
+	}
+
+	const copyPayload = buildRedisInspectCopyPayload(
+		parsed.data.result,
+		parsed.data.copyMode,
+	)
+	clipboard.writeText(copyPayload.text)
+
+	return ensureResponseEnvelope(
+		redisInspectCopyResponseSchema,
+		{
+			ok: true,
+			data: {
+				modeUsed: copyPayload.modeUsed,
+				copiedBytes: copyPayload.copiedBytes,
+				redactionApplied: copyPayload.redactionApplied,
+			},
+		},
+		'Invalid redisInspect:copy response envelope',
+	)
+}
+
 const handleMemcachedGet = async (
 	_event: IpcMainInvokeEvent,
 	payload: unknown,
@@ -969,6 +1009,7 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(redisKeysSearchStartChannel, handleRedisKeysSearchStart)
 	ipcMain.handle(jobsCancelChannel, handleJobsCancel)
 	ipcMain.handle(redisInspectStartChannel, handleRedisInspectStart)
+	ipcMain.handle(redisInspectCopyChannel, handleRedisInspectCopy)
 	ipcMain.handle(memcachedGetChannel, handleMemcachedGet)
 	ipcMain.handle(memcachedStatsGetChannel, handleMemcachedStatsGet)
 }
