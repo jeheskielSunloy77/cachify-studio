@@ -1,6 +1,6 @@
 # Story 3.1: Safe Value Preview Limits and "Cap Reached" States
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-1-safe-value-preview-limits-and-cap-reached-states`
@@ -25,20 +25,20 @@ so that the app stays responsive under pressure.
 
 ## Tasks / Subtasks
 
-- [ ] Add explicit preview-cap contract metadata for all inspector result types (AC: 1,2,3)
-  - [ ] Include `capReached`, `capReason`, `previewBytes`, and `maxDepthApplied` in typed payloads.
-  - [ ] Preserve structured-clone-safe envelope shape.
-- [ ] Implement size/depth cap enforcement in main inspector services (AC: 1,2,3)
-  - [ ] Apply 1 MB decoded preview limit before renderer display.
-  - [ ] Apply structured depth cap of 20 levels for formatted rendering.
-- [ ] Add renderer cap-reached UI states in inspector (AC: 2,3)
-  - [ ] Show clear "too large" and "depth collapsed" states with context.
-  - [ ] Keep partial preview readable and non-blocking.
-- [ ] Ensure cancelability and responsiveness for heavy decode paths (AC: 1)
-  - [ ] Reuse existing progressive/cancelable operation patterns.
-- [ ] Add tests (AC: 1,2,3)
-  - [ ] Main tests for cap decisions and metadata output.
-  - [ ] Renderer tests for cap banners, partial preview, and collapse indicators.
+- [x] Add explicit preview-cap contract metadata for all inspector result types (AC: 1,2,3)
+  - [x] Include `capReached`, `capReason`, `previewBytes`, and `maxDepthApplied` in typed payloads.
+  - [x] Preserve structured-clone-safe envelope shape.
+- [x] Implement size/depth cap enforcement in main inspector services (AC: 1,2,3)
+  - [x] Apply 1 MB decoded preview limit before renderer display.
+  - [x] Apply structured depth cap of 20 levels for formatted rendering.
+- [x] Add renderer cap-reached UI states in inspector (AC: 2,3)
+  - [x] Show clear "too large" and "depth collapsed" states with context.
+  - [x] Keep partial preview readable and non-blocking.
+- [x] Ensure cancelability and responsiveness for heavy decode paths (AC: 1)
+  - [x] Reuse existing progressive/cancelable operation patterns.
+- [x] Add tests (AC: 1,2,3)
+  - [x] Main tests for cap decisions and metadata output.
+  - [x] Renderer tests for cap banners, partial preview, and collapse indicators.
 
 ## Dev Notes
 
@@ -119,12 +119,48 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Added explicit preview metadata (`previewBytes`, `maxDepthApplied`) to Redis inspector variants and Memcached get payload schema.
+- Enforced string depth-cap metadata (`FORMATTED_DEPTH_LIMIT`, max depth 20) in Redis inspector while preserving existing cancellation patterns.
+- Added renderer cap-state banners for oversized string previews and formatted-depth collapse indicators.
+- Updated story tests first (red), implemented service/UI/contract changes (green), then verified full regression suite.
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented typed cap metadata across Redis and Memcached inspector payloads with structured-clone-safe envelopes.
+- Added deterministic 1 MB boundary behavior and explicit depth-cap metadata for formatted-safe string rendering.
+- Added UI states for "too large to preview safely" and depth-collapsed formatting while keeping partial previews readable.
+- Added/updated tests for 1 MB boundary behavior, depth-cap metadata, and renderer cap/depth indicators.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/main/domain/cache/inspector/memcached-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/main/test/memcached-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `src/renderer/test/profiles.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-1-safe-value-preview-limits-and-cap-reached-states.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Changes Requested -> Fixed -> Approved
+
+### Findings
+
+- HIGH `[fixed]` `maxDepthApplied` was reported for raw-mode string previews when JSON formatting was never activated, producing inaccurate cap metadata.
+- MEDIUM `[fixed]` Full regression reliability was degraded by a timeout-prone renderer test (`profiles.test.tsx`), blocking deterministic sign-off for this story.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.1 safe preview caps + depth-cap metadata, added cap/depth UI states, and passed full lint/typecheck/test gates; story moved to review.
+- 2026-02-11: Senior review fixed raw-mode `maxDepthApplied` metadata, stabilized flaky regression timing, re-ran lint/typecheck/tests, and moved story to done.

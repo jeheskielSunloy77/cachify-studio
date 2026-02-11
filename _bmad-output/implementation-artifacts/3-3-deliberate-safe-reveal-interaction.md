@@ -1,6 +1,6 @@
 # Story 3.3: Deliberate Safe Reveal Interaction
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-3-deliberate-safe-reveal-interaction`
@@ -22,18 +22,18 @@ so that revealing secrets is an intentional action.
 
 ## Tasks / Subtasks
 
-- [ ] Define reveal state and explicit user-intent interaction contract (AC: 1,2)
-  - [ ] Add typed command/state for reveal start, reveal end, and auto-reset triggers.
-- [ ] Implement reveal lifecycle in renderer with strict reset rules (AC: 1,2)
-  - [ ] Support deliberate interaction pattern (explicit toggle with confirmation or press-and-hold per UX decision).
-  - [ ] Auto-reset on key change, view switch, navigation, disconnect, and lock-state changes.
-- [ ] Ensure default state remains redacted for copy/export entry points (AC: 2)
-  - [ ] Reveal state must not implicitly change copy defaults.
-- [ ] Add accessibility and keyboard support (AC: 1)
-  - [ ] Clear focus behavior and visible revealed-state indicator.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Renderer tests for reveal transitions and auto-rehide triggers.
-  - [ ] Main/contract tests for reveal-safe data flow constraints.
+- [x] Define reveal state and explicit user-intent interaction contract (AC: 1,2)
+  - [x] Add typed command/state for reveal start, reveal end, and auto-reset triggers.
+- [x] Implement reveal lifecycle in renderer with strict reset rules (AC: 1,2)
+  - [x] Support deliberate interaction pattern (explicit toggle with confirmation or press-and-hold per UX decision).
+  - [x] Auto-reset on key change, view switch, navigation, disconnect, and lock-state changes.
+- [x] Ensure default state remains redacted for copy/export entry points (AC: 2)
+  - [x] Reveal state must not implicitly change copy defaults.
+- [x] Add accessibility and keyboard support (AC: 1)
+  - [x] Clear focus behavior and visible revealed-state indicator.
+- [x] Add tests (AC: 1,2)
+  - [x] Renderer tests for reveal transitions and auto-rehide triggers.
+  - [x] Main/contract tests for reveal-safe data flow constraints.
 
 ## Dev Notes
 
@@ -109,12 +109,46 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Added typed reveal contract (`revealMode` request and reveal-state metadata including auto-reset triggers) in shared IPC schemas.
+- Implemented deliberate reveal flow in inspector UI: explicit reveal intent, confirmation gate, and explicit re-hide action.
+- Added auto-rehide behavior when revealed content is active and connection disconnects or safety mode relocks.
+- Preserved redaction-by-default behavior by keeping inspect requests redacted unless explicit reveal is requested.
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented explicit reveal lifecycle with typed request/state metadata and visible revealed-state indicators.
+- Added renderer safeguards to auto-reset revealed content on safety-critical triggers.
+- Added tests for reveal confirmation, reveal/re-hide transitions, and safety relock auto-rehide behavior.
+- Added main test coverage to ensure unredacted values are returned only when explicit reveal mode is requested.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-3-deliberate-safe-reveal-interaction.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Changes Requested -> Fixed -> Approved
+
+### Findings
+
+- HIGH `[fixed]` Reveal lifecycle did not auto-reset on view-switch (`Raw` <-> `Formatted`) even though `view-switch` is part of declared auto-reset triggers and task claims.
+- MEDIUM `[fixed]` Reveal confirmation guidance omitted `view switch` as an explicit reset trigger, reducing safety clarity.
+- MEDIUM `[fixed]` Missing regression coverage for view-switch auto-rehide allowed the behavior gap to pass initial validation.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.3 deliberate reveal interaction, auto-rehide safety triggers, and reveal-state contract metadata; full lint/typecheck/test passed; story moved to review.
+- 2026-02-11: Senior review enforced reveal reset on view-switch, updated reveal guidance copy, added regression coverage, and moved story to done.

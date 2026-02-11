@@ -1,6 +1,6 @@
 # Story 3.5: Decode Pipeline Selection and Visibility
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-5-decode-pipeline-selection-and-visibility`
@@ -22,20 +22,20 @@ so that I can understand how the app is interpreting the value.
 
 ## Tasks / Subtasks
 
-- [ ] Define decode pipeline catalog and active-stage contract (AC: 1,2)
-  - [ ] Include supported pipeline ids, labels, and capability flags.
-  - [ ] Return active pipeline and stage outcome metadata in inspector response.
-- [ ] Implement decode pipeline execution and error classification (AC: 1,2)
-  - [ ] Add deterministic stage sequencing and bounded execution.
-  - [ ] Map failures to actionable typed errors.
-- [ ] Add pipeline selector UI and active-state visibility (AC: 1)
-  - [ ] Show selected pipeline in inspector header/context line.
-  - [ ] Persist last used pipeline only as preference (not value content).
-- [ ] Implement guided fallback UX for unsupported/failed decode (AC: 2)
-  - [ ] Offer fallback actions: Raw view, alternate pipeline, export partial/raw.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Main tests for pipeline stage outcomes and error mapping.
-  - [ ] Renderer tests for selector behavior and failure guidance.
+- [x] Define decode pipeline catalog and active-stage contract (AC: 1,2)
+  - [x] Include supported pipeline ids, labels, and capability flags.
+  - [x] Return active pipeline and stage outcome metadata in inspector response.
+- [x] Implement decode pipeline execution and error classification (AC: 1,2)
+  - [x] Add deterministic stage sequencing and bounded execution.
+  - [x] Map failures to actionable typed errors.
+- [x] Add pipeline selector UI and active-state visibility (AC: 1)
+  - [x] Show selected pipeline in inspector header/context line.
+  - [x] Persist last used pipeline only as preference (not value content).
+- [x] Implement guided fallback UX for unsupported/failed decode (AC: 2)
+  - [x] Offer fallback actions: Raw view, alternate pipeline, export partial/raw.
+- [x] Add tests (AC: 1,2)
+  - [x] Main tests for pipeline stage outcomes and error mapping.
+  - [x] Renderer tests for selector behavior and failure guidance.
 
 ## Dev Notes
 
@@ -113,12 +113,46 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Added decode pipeline request/response metadata to shared IPC contract (`raw-text`, `json-pretty`, stage status, typed fallback codes/actions).
+- Implemented decode pipeline selection/fallback logic in Redis inspector service with bounded formatted execution and deterministic fallback to raw.
+- Added renderer decode visibility badge and pipeline fallback guidance actions in inspector.
+- Added decode preference persistence in renderer using localStorage (`cachify.decodePipelinePreference`).
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented typed decode pipeline catalog and stage metadata for inspector outputs.
+- Added deterministic decode fallback mapping (`VALUE_NOT_FORMATTABLE_AS_JSON`, `PREVIEW_TRUNCATED_BEFORE_DECODE`, `TYPE_HAS_NO_PIPELINE`) with safe suggested actions.
+- Exposed active decode choice in inspector header and applied persisted pipeline preference to new inspect actions.
+- Added tests for decode success/fallback behavior (main) and decode selection/fallback guidance (renderer).
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-5-decode-pipeline-selection-and-visibility.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Changes Requested -> Fixed -> Approved
+
+### Findings
+
+- HIGH `[fixed]` Renderer fallback mapping used `PREVIEW_TRUNCATED_BEFORE_FORMATTING` while main emits `PREVIEW_TRUNCATED_BEFORE_DECODE`, causing incorrect guidance text for truncated decode failures.
+- MEDIUM `[fixed]` No regression test covered truncated-before-decode fallback guidance path, leaving failure-state UX unguarded.
+- LOW `[fixed]` Story remained in `review` and required status/sprint sync after decode fallback corrections.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.5 decode pipeline selection/visibility, typed fallback mapping, persisted decode preference, and guided fallback actions; story moved to review.
+- 2026-02-11: Senior review aligned truncated decode failure-code mapping with renderer guidance, added coverage for that fallback path, and moved story to done.

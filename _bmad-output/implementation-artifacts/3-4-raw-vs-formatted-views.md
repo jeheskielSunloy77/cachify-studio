@@ -1,6 +1,6 @@
 # Story 3.4: Raw vs Formatted Views
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-4-raw-vs-formatted-views`
@@ -22,17 +22,17 @@ so that I can quickly validate the underlying bytes and the interpreted meaning.
 
 ## Tasks / Subtasks
 
-- [ ] Define dual-view inspector contract with explicit mode metadata (AC: 1,2)
-  - [ ] Include active mode and availability/fallback reasons per mode.
-- [ ] Implement mode toggling with stable cursor/selection preservation (AC: 1)
-  - [ ] Preserve scroll position and selected key context when switching modes.
-- [ ] Offload expensive formatting/decode work to non-blocking path (AC: 2)
-  - [ ] Use existing job/cancel model or worker-thread path for heavy format transforms.
-- [ ] Add renderer mode controls and empty/error states (AC: 1,2)
-  - [ ] Show why formatted mode is unavailable when decode fails.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Renderer tests for mode toggling, place preservation, and fallback messaging.
-  - [ ] Main tests for heavy-format boundaries and cancellation.
+- [x] Define dual-view inspector contract with explicit mode metadata (AC: 1,2)
+  - [x] Include active mode and availability/fallback reasons per mode.
+- [x] Implement mode toggling with stable cursor/selection preservation (AC: 1)
+  - [x] Preserve scroll position and selected key context when switching modes.
+- [x] Offload expensive formatting/decode work to non-blocking path (AC: 2)
+  - [x] Use existing job/cancel model or worker-thread path for heavy format transforms.
+- [x] Add renderer mode controls and empty/error states (AC: 1,2)
+  - [x] Show why formatted mode is unavailable when decode fails.
+- [x] Add tests (AC: 1,2)
+  - [x] Renderer tests for mode toggling, place preservation, and fallback messaging.
+  - [x] Main tests for heavy-format boundaries and cancellation.
 
 ## Dev Notes
 
@@ -109,12 +109,46 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Extended inspect contract with `viewMode` request and typed view state (`requestedMode`, `activeMode`, availability, fallback reason).
+- Implemented string view switching in `RedisExplorerPanel` with per-mode scroll restoration for raw/formatted transitions.
+- Added formatted fallback messaging path for non-JSON and truncation cases with non-blocking inspect job workflow.
+- Fixed a renderer inspect-event race by matching progress/done events with a ref-tracked active inspect job id.
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented raw/formatted dual-view behavior across contract, main inspector service, and renderer controls.
+- Preserved key context and string preview scroll position when toggling between modes.
+- Kept formatting work on the existing inspect job path (main process), preserving cancelability and renderer responsiveness.
+- Added/updated main and renderer tests for mode metadata, toggle behavior, depth-cap handling, and unavailable formatted fallback states.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-4-raw-vs-formatted-views.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Changes Requested -> Fixed -> Approved
+
+### Findings
+
+- HIGH `[fixed]` Raw-mode responses could still report `maxDepthApplied=20`, conflating formatted depth-cap metadata with raw rendering behavior.
+- MEDIUM `[fixed]` Scroll restoration assertion had a race in renderer tests; behavior was correct but validation was flaky without async wait.
+- LOW `[fixed]` Story remained in `review` and required status/sprint sync after revalidation.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.4 raw/formatted mode switching with scroll preservation, typed view metadata, formatted fallback messaging, and regression-tested behavior; story moved to review.
+- 2026-02-11: Senior review corrected raw-view depth metadata semantics, hardened scroll-restoration test timing, and moved story to done.

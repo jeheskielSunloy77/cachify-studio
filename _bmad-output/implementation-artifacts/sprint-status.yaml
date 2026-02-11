@@ -58,13 +58,13 @@ development_status:
   2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling: done
   2-7-memcached-server-statistics: done
   epic-2-retrospective: done
-  epic-3: in-progress
-  3-1-safe-value-preview-limits-and-cap-reached-states: ready-for-dev
-  3-2-redaction-by-default-safe-preview-mode: ready-for-dev
-  3-3-deliberate-safe-reveal-interaction: ready-for-dev
-  3-4-raw-vs-formatted-views: ready-for-dev
-  3-5-decode-pipeline-selection-and-visibility: ready-for-dev
-  3-6-copy-in-redacted-safe-form: ready-for-dev
+  epic-3: done
+  3-1-safe-value-preview-limits-and-cap-reached-states: done
+  3-2-redaction-by-default-safe-preview-mode: done
+  3-3-deliberate-safe-reveal-interaction: done
+  3-4-raw-vs-formatted-views: done
+  3-5-decode-pipeline-selection-and-visibility: done
+  3-6-copy-in-redacted-safe-form: done
   epic-3-retrospective: optional
   epic-4: backlog
   4-1-enforce-mutation-blocking-by-default-read-only-posture: backlog

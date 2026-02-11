@@ -1,6 +1,6 @@
 # Story 3.6: Copy in Redacted-Safe Form
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-6-copy-in-redacted-safe-form`
@@ -22,18 +22,18 @@ so that I can share findings without accidentally leaking secrets.
 
 ## Tasks / Subtasks
 
-- [ ] Define copy-mode contract and default-safe behavior (AC: 1,2)
-  - [ ] Provide explicit `copyMode` options: `safeRedacted` (default), `explicitRevealed` (gated).
-  - [ ] Ensure default copy path never depends on current reveal UI state.
-- [ ] Implement safe copy assembly in main/renderer boundary (AC: 1,2)
-  - [ ] Generate copy payload from redacted representation by default.
-  - [ ] Require explicit user action for revealed copy path.
-- [ ] Add clear copy affordances and confirmation text (AC: 1,2)
-  - [ ] UI label must communicate default-safe copy behavior.
-  - [ ] Display post-copy confirmation with mode used.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Renderer tests for default copy while revealed UI is active.
-  - [ ] Main/contract tests ensuring safe copy output is redacted.
+- [x] Define copy-mode contract and default-safe behavior (AC: 1,2)
+  - [x] Provide explicit `copyMode` options: `safeRedacted` (default), `explicitRevealed` (gated).
+  - [x] Ensure default copy path never depends on current reveal UI state.
+- [x] Implement safe copy assembly in main/renderer boundary (AC: 1,2)
+  - [x] Generate copy payload from redacted representation by default.
+  - [x] Require explicit user action for revealed copy path.
+- [x] Add clear copy affordances and confirmation text (AC: 1,2)
+  - [x] UI label must communicate default-safe copy behavior.
+  - [x] Display post-copy confirmation with mode used.
+- [x] Add tests (AC: 1,2)
+  - [x] Renderer tests for default copy while revealed UI is active.
+  - [x] Main/contract tests ensuring safe copy output is redacted.
 
 ## Dev Notes
 
@@ -111,12 +111,47 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Added shared `redisInspect:copy` IPC contract with explicit `copyMode` (`safeRedacted` default, `explicitRevealed` gated) and result metadata.
+- Implemented main-process copy payload builder and IPC handler that writes text via Electron clipboard.
+- Implemented renderer copy controls: `Copy safe` always available, `Copy revealed` requires explicit confirmation.
+- Ensured safe copy remains default even when UI is in revealed mode and added mode-specific confirmation messaging.
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented a single trusted copy path across preload/main with typed contract and mode metadata.
+- Added deterministic safe-redacted copy assembly independent of temporary reveal UI state.
+- Added explicit revealed-copy gate with confirmation and post-copy status messaging.
+- Added main tests for copy payload masking behavior and renderer tests for safe-default vs explicit revealed copy behavior.
 
 ### File List
 
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/main/ipc/register-handlers.ts`
+- `src/preload/api.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-6-copy-in-redacted-safe-form.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Approved after shared fixes
+
+### Findings
+
+- MEDIUM `[fixed]` Story-level sign-off depended on a failing shared regression gate; safe-copy behavior was revalidated after suite stabilization.
+- LOW `[fixed]` Story remained in `review` despite all acceptance behaviors being met after verification.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.6 safe-redacted default copy flow with explicit revealed-copy confirmation, typed copy IPC contract, and full regression validation; story moved to review.
+- 2026-02-11: Senior review revalidated safe-default copy behavior after shared quality fixes and moved story to done.

@@ -1,6 +1,6 @@
 # Story 3.2: Redaction-by-Default Safe Preview Mode
 
-Status: ready-for-dev
+Status: done
 
 Generated: 2026-02-11
 Story Key: `3-2-redaction-by-default-safe-preview-mode`
@@ -22,18 +22,18 @@ so that I do not accidentally expose secrets during debugging or screen share.
 
 ## Tasks / Subtasks
 
-- [ ] Define shared redaction policy contract and result metadata (AC: 1,2)
-  - [ ] Include policy id/version and redacted segment counts.
-  - [ ] Ensure policy metadata is present in inspector responses.
-- [ ] Implement redaction-by-default pipeline in main inspector services (AC: 1)
-  - [ ] Apply redaction before renderer output for both formatted and raw-safe previews.
-  - [ ] Reuse deterministic masking rules for common secret patterns.
-- [ ] Add renderer redaction indicators and policy badges (AC: 2)
-  - [ ] Show redaction status at inspector header.
-  - [ ] Expose short policy summary and tooltip details.
-- [ ] Add tests (AC: 1,2)
-  - [ ] Main tests for masking behavior and policy metadata.
-  - [ ] Renderer tests for visible redaction indicators.
+- [x] Define shared redaction policy contract and result metadata (AC: 1,2)
+  - [x] Include policy id/version and redacted segment counts.
+  - [x] Ensure policy metadata is present in inspector responses.
+- [x] Implement redaction-by-default pipeline in main inspector services (AC: 1)
+  - [x] Apply redaction before renderer output for both formatted and raw-safe previews.
+  - [x] Reuse deterministic masking rules for common secret patterns.
+- [x] Add renderer redaction indicators and policy badges (AC: 2)
+  - [x] Show redaction status at inspector header.
+  - [x] Expose short policy summary and tooltip details.
+- [x] Add tests (AC: 1,2)
+  - [x] Main tests for masking behavior and policy metadata.
+  - [x] Renderer tests for visible redaction indicators.
 
 ## Dev Notes
 
@@ -113,12 +113,47 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- Story context authored for implementation handoff.
+- Added new redaction module `src/main/domain/security/redaction.ts` with deterministic JWT/bearer/sensitive-key/high-entropy masking rules.
+- Extended shared IPC schemas with required `redaction` metadata (policy id/version/summary, redacted segment counts, applied flag).
+- Wired redaction through Redis + Memcached inspector payload assembly before renderer output.
+- Added renderer redaction status badges/policy display and contextual redaction summaries in inspector/memcached views.
+- Validation: `npm run lint && npm run typecheck && npm test` passed.
 
 ### Completion Notes List
 
-- Story context completed with implementation guardrails.
+- Implemented redaction-by-default preview pipeline in main process and ensured policy metadata travels in typed inspector responses.
+- Added policy-aware UI indicators (`Redaction active/default`, policy badge with tooltip summary).
+- Added/updated tests for Redis and Memcached masking behavior plus renderer redaction visibility.
 
 ### File List
 
+- `src/main/domain/security/redaction.ts`
+- `src/shared/ipc/ipc.contract.ts`
+- `src/main/domain/cache/inspector/redis-inspector.service.ts`
+- `src/main/domain/cache/inspector/memcached-inspector.service.ts`
+- `src/renderer/features/explorer/RedisExplorerPanel.tsx`
+- `src/main/test/redis-inspector.service.test.ts`
+- `src/main/test/memcached-inspector.service.test.ts`
+- `src/renderer/test/explorer.test.tsx`
+- `_bmad-output/implementation-artifacts/sprint-status.yaml`
 - `_bmad-output/implementation-artifacts/3-2-redaction-by-default-safe-preview-mode.md`
+
+## Senior Developer Review (AI)
+
+### Reviewer
+
+Jay (Senior Developer Review Workflow)
+
+### Outcome
+
+Changes Requested -> Fixed -> Approved
+
+### Findings
+
+- MEDIUM `[fixed]` Story validation gate was not reliable while the shared renderer regression suite was unstable; redaction acceptance could not be signed off with confidence.
+- LOW `[fixed]` Story remained in `review` after fixes and required status/sprint sync to reflect completed quality gate.
+
+## Change Log
+
+- 2026-02-11: Implemented Story 3.2 redaction-by-default pipeline, policy metadata contract, and redaction UI indicators; full lint/typecheck/test passed; story moved to review.
+- 2026-02-11: Senior review revalidated redaction behavior after shared test-stability fixes and moved story to done.
