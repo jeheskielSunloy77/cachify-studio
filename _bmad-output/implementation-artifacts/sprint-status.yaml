@@ -49,14 +49,14 @@ development_status:
   1-7-environment-labels-and-default-safety-posture-read-only-by-default-for-prod: done
   1-8-unlock-and-relock-mutations-mode-with-explicit-safety-signals: done
   epic-1-retrospective: done
-  epic-2: in-progress
-  2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results: review
-  2-2-redis-key-metadata-in-results-type-ttl: review
-  2-3-redis-inspect-strings-and-hashes-fetch-minimal-viewer-with-safety-caps: review
-  2-4-redis-inspect-lists-sets-and-sorted-sets-fetch-minimal-viewer-with-safety-caps: review
-  2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps: review
-  2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling: review
-  2-7-memcached-server-statistics: review
+  epic-2: done
+  2-1-redis-key-discovery-prefix-browse-search-with-progressive-cancelable-results: done
+  2-2-redis-key-metadata-in-results-type-ttl: done
+  2-3-redis-inspect-strings-and-hashes-fetch-minimal-viewer-with-safety-caps: done
+  2-4-redis-inspect-lists-sets-and-sorted-sets-fetch-minimal-viewer-with-safety-caps: done
+  2-5-redis-inspect-streams-fetch-minimal-viewer-with-safety-caps: done
+  2-6-memcached-get-by-key-read-with-basic-metadata-and-error-handling: done
+  2-7-memcached-server-statistics: done
   epic-2-retrospective: optional
   epic-3: backlog
   3-1-safe-value-preview-limits-and-cap-reached-states: backlog

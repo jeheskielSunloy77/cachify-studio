@@ -31,6 +31,20 @@ type MemcachedClientHandle = {
   stats: () => Promise<MemcachedStatsResult>;
 };
 
+const isValidMemcachedKey = (key: string) => {
+  if (key.length === 0 || key.length > 250 || /\s/.test(key)) {
+    return false;
+  }
+
+  for (const char of key) {
+    const code = char.charCodeAt(0);
+    if (code <= 0x1f || code === 0x7f) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const writeLine = (socket: Socket, command: string) =>
   new Promise<void>((resolve, reject) => {
     socket.write(command, (error) => {
@@ -162,6 +176,10 @@ export const connectMemcachedClient = async (
   }
 
   const get = async (key: string): Promise<MemcachedGetResult> => {
+    if (!isValidMemcachedKey(key)) {
+      throw new Error('INVALID_KEY:Memcached key must not contain whitespace or control characters.');
+    }
+
     await writeLine(socket, `get ${key}\r\n`);
     const firstLine = await readLine();
     if (firstLine === 'END') {

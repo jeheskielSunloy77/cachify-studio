@@ -139,5 +139,23 @@ describe('memcached client', () => {
     await expect(client.stats()).rejects.toThrow(/TIMEOUT/);
     await client.disconnect();
   });
-});
 
+  it('rejects invalid memcached keys before sending protocol commands', async () => {
+    const { host, port } = await startServer((command, socket) => {
+      if (command === 'version') {
+        socket.write('VERSION 1.6.0\r\n');
+      }
+    });
+
+    const client = await connectMemcachedClient({
+      host,
+      port,
+      timeoutMs: 500,
+      authMode: 'none',
+    });
+
+    await expect(client.get('invalid key')).rejects.toThrow(/INVALID_KEY/);
+    await expect(client.get('invalid\r\nkey')).rejects.toThrow(/INVALID_KEY/);
+    await client.disconnect();
+  });
+});

@@ -557,7 +557,24 @@ export const redisInspectDoneEventSchema = z
 
 export const memcachedGetRequestSchema = z
   .object({
-    key: z.string().trim().min(1).max(250),
+    key: z
+      .string()
+      .min(1)
+      .max(250)
+      .refine((value) => !/\s/.test(value), {
+        message: 'Memcached key must not contain whitespace characters.',
+      })
+      .refine((value) => {
+        for (const char of value) {
+          const code = char.charCodeAt(0);
+          if (code <= 0x1f || code === 0x7f) {
+            return false;
+          }
+        }
+        return true;
+      }, {
+        message: 'Memcached key must not contain control characters.',
+      }),
   })
   .strict();
 

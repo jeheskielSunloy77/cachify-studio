@@ -276,6 +276,15 @@ export const connectionSessionService = {
           error: { code: 'TIMEOUT', message: 'Memcached request timed out.' },
         };
       }
+      if (message.includes('INVALID_KEY')) {
+        return {
+          ok: false,
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'Memcached key must not contain whitespace or control characters.',
+          },
+        };
+      }
       if (message.includes('PROTOCOL_ERROR')) {
         return {
           ok: false,

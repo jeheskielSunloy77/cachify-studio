@@ -254,10 +254,26 @@ export const runRedisKeyDiscoveryJob = async ({
           discovered.map((item) => item.key),
           DEFAULT_METADATA_CONCURRENCY,
           async (key): Promise<RedisKeyDiscoveryItem> => {
+            if (isCancelled()) {
+              return {
+                key,
+                prefixSegments: toPrefixSegments(key),
+                metadataState: 'pending',
+              };
+            }
+
             const [typeResponse, ttlResponse] = await Promise.all([
               executeRedisCommand(['TYPE', key]),
               executeRedisCommand(['TTL', key]),
             ]);
+
+            if (isCancelled()) {
+              return {
+                key,
+                prefixSegments: toPrefixSegments(key),
+                metadataState: 'pending',
+              };
+            }
 
             const type = 'error' in typeResponse ? 'unknown' : normalizeRedisType(typeResponse.data);
             const ttlSeconds =

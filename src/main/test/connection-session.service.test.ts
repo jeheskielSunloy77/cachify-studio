@@ -321,4 +321,44 @@ describe('connection session service', () => {
       expect(relocked.data.safetyMode).toBe('readOnly');
     }
   });
+
+  it('maps invalid memcached keys to validation errors', async () => {
+    mocks.getProfileById.mockReturnValue({
+      id: '77777777-7777-4777-8777-777777777777',
+      kind: 'memcached',
+      name: 'Memcached',
+      host: 'localhost',
+      port: 11211,
+      environment: 'local',
+      tags: [],
+      favorite: false,
+      credentialPolicy: 'promptEverySession',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+    mocks.connectMemcachedClient.mockResolvedValue({
+      disconnect: vi.fn(async () => undefined),
+      get: vi.fn(async () => {
+        throw new Error('INVALID_KEY:bad key');
+      }),
+      stats: vi.fn(async () => []),
+    });
+
+    const { connectionSessionService } = await import(
+      '../domain/cache/session/connection-session.service'
+    );
+    const connected = await connectionSessionService.connect(
+      '77777777-7777-4777-8777-777777777777',
+    );
+    expect(connected.ok).toBe(true);
+
+    const result = await connectionSessionService.executeMemcachedGet('bad key');
+    expect(result.ok).toBe(false);
+    if ('error' in result) {
+      expect(result.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
 });

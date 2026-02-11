@@ -148,6 +148,46 @@ describe('redis key discovery service', () => {
     expect(doneStatus).toBe('cancelled');
   });
 
+  it('skips metadata lookups after cancellation is requested', async () => {
+    let cancelled = false;
+    let scanCalls = 0;
+    let typeCalls = 0;
+    let ttlCalls = 0;
+    let doneStatus: string | null = null;
+
+    await runRedisKeyDiscoveryJob({
+      jobId: 'job-meta-cancel',
+      request: { query: 'meta', includeMetadata: true },
+      executeRedisCommand: async (parts) => {
+        if (parts[0] === 'SCAN') {
+          scanCalls += 1;
+          return { ok: true, data: ['99', ['meta:one', 'meta:two']] };
+        }
+        if (parts[0] === 'TYPE') {
+          typeCalls += 1;
+          return { ok: true, data: 'string' };
+        }
+        if (parts[0] === 'TTL') {
+          ttlCalls += 1;
+          return { ok: true, data: 60 };
+        }
+        return { ok: true, data: ['0', []] };
+      },
+      isCancelled: () => cancelled,
+      onProgress: () => {
+        cancelled = true;
+      },
+      onDone: (event) => {
+        doneStatus = event.status;
+      },
+    });
+
+    expect(scanCalls).toBe(1);
+    expect(typeCalls).toBe(0);
+    expect(ttlCalls).toBe(0);
+    expect(doneStatus).toBe('cancelled');
+  });
+
   it('reports limit-reached when result cap is exceeded', async () => {
     let doneEvent:
       | {
