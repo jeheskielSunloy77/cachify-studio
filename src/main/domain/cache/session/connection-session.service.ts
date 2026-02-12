@@ -9,6 +9,7 @@ import { profileSecrets } from '../../security/secrets';
 import {
   connectMemcachedClient,
   type MemcachedGetResult,
+  type MemcachedSetResult,
   type MemcachedStatsResult,
 } from '../clients/memcached.client';
 import { connectRedisClient, type RedisCommandValue } from '../clients/redis.client';
@@ -20,10 +21,22 @@ type RedisCommandClient = DisconnectableClient & {
 type MemcachedCommandClient = DisconnectableClient & {
   get: (key: string) => Promise<MemcachedGetResult>;
   stats: () => Promise<MemcachedStatsResult>;
+  set: (
+    key: string,
+    value: string,
+    options?: { flags?: number; ttlSeconds?: number },
+  ) => Promise<MemcachedSetResult>;
 };
 type ErrorEnvelope = { code: string; message: string; details?: unknown };
 type SessionResult =
   | { ok: true; data: ConnectionStatus }
+  | { ok: false; error: ErrorEnvelope };
+
+type RedisMutationResult<TData> =
+  | { ok: true; data: TData }
+  | { ok: false; error: ErrorEnvelope };
+type MemcachedMutationResult<TData> =
+  | { ok: true; data: TData }
   | { ok: false; error: ErrorEnvelope };
 
 const CONNECTION_TIMEOUT_MS = 4000;
@@ -76,6 +89,91 @@ const mapConnectionError = (error: unknown): ErrorEnvelope => {
     return { code: 'CONNECTION_REFUSED', message: 'Connection was refused by the target host.' };
   }
   return { code: 'CONNECTION_REFUSED', message: 'Connection failed. Verify host, port, and credentials.' };
+};
+
+const ensureMutationAllowed = (): ErrorEnvelope | null => {
+  if (status.safetyMode === 'unlocked') {
+    return null;
+  }
+  return {
+    code: 'MUTATION_BLOCKED_READ_ONLY',
+    message: 'Mutations are blocked while safety mode is read-only. Unlock mutations to continue.',
+    ...(status.safetyReason ? { details: { safetyReason: status.safetyReason } } : {}),
+  };
+};
+
+const mapRedisMutationError = (error: unknown): ErrorEnvelope => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('TIMEOUT')) {
+    return {
+      code: 'TIMEOUT',
+      message: 'Redis mutation timed out. Retry after checking connection health.',
+    };
+  }
+  if (
+    message.includes('NOAUTH') ||
+    message.includes('WRONGPASS') ||
+    message.includes('NOPERM')
+  ) {
+    return {
+      code: 'AUTH_FAILED',
+      message: 'Redis rejected this mutation due to authentication or permissions.',
+    };
+  }
+  if (message.includes('WRONGTYPE')) {
+    return {
+      code: 'REDIS_WRONG_TYPE',
+      message: 'Mutation does not match the Redis key type.',
+    };
+  }
+  if (message.includes('READONLY')) {
+    return {
+      code: 'MUTATION_BLOCKED_READ_ONLY',
+      message: 'Redis server is read-only for write commands.',
+    };
+  }
+  if (message.includes('REDIS_ERROR:')) {
+    return {
+      code: 'REDIS_MUTATION_FAILED',
+      message: message.replace(/^REDIS_ERROR:/, ''),
+    };
+  }
+  return {
+    code: 'REDIS_MUTATION_FAILED',
+    message: 'Redis mutation failed. Verify key, payload, and connection state.',
+  };
+};
+
+const mapMemcachedMutationError = (error: unknown): ErrorEnvelope => {
+  const message = error instanceof Error ? error.message : String(error);
+  if (message.includes('TIMEOUT')) {
+    return {
+      code: 'TIMEOUT',
+      message: 'Memcached mutation timed out. Retry after checking connection health.',
+    };
+  }
+  if (message.includes('INVALID_KEY')) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'Memcached key must not contain whitespace or control characters.',
+    };
+  }
+  if (message.includes('INVALID_ARGUMENT')) {
+    return {
+      code: 'VALIDATION_ERROR',
+      message: 'Memcached mutation payload is invalid.',
+    };
+  }
+  if (message.includes('PROTOCOL_ERROR')) {
+    return {
+      code: 'MEMCACHED_PROTOCOL_ERROR',
+      message: 'Memcached returned an invalid response.',
+    };
+  }
+  return {
+    code: 'MEMCACHED_SET_FAILED',
+    message: 'Memcached set failed. Verify key/value and connectivity.',
+  };
 };
 
 const resolveRuntimeSecret = (
@@ -174,6 +272,13 @@ export const connectionSessionService = {
   },
   getStatus: () => status,
   getActiveProfile: () => activeProfile,
+  checkMutationAllowed: (): { ok: true } | { ok: false; error: ErrorEnvelope } => {
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+    return { ok: true };
+  },
   executeRedisCommand: async (
     parts: string[],
   ): Promise<{ ok: true; data: RedisCommandValue } | { ok: false; error: ErrorEnvelope }> => {
@@ -357,6 +462,523 @@ export const connectionSessionService = {
       };
     }
   },
+  executeRedisStringSet: async (
+    key: string,
+    value: string,
+  ): Promise<RedisMutationResult<{ key: string }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command(['SET', key, value]);
+      if (response !== 'OK') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected SET response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisHashSetField: async (
+    key: string,
+    field: string,
+    value: string,
+  ): Promise<RedisMutationResult<{ key: string; field: string; created: boolean }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command([
+        'HSET',
+        key,
+        field,
+        value,
+      ]);
+      if (typeof response !== 'number') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected HSET response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, field, created: response > 0 },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisListPush: async (
+    key: string,
+    value: string,
+    direction: 'left' | 'right',
+  ): Promise<RedisMutationResult<{ key: string; direction: 'left' | 'right'; length: number }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command([
+        direction === 'left' ? 'LPUSH' : 'RPUSH',
+        key,
+        value,
+      ]);
+      if (typeof response !== 'number') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected list push response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, direction, length: response },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisSetAdd: async (
+    key: string,
+    member: string,
+  ): Promise<RedisMutationResult<{ key: string; member: string; added: boolean }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command(['SADD', key, member]);
+      if (typeof response !== 'number') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected SADD response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, member, added: response > 0 },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisZSetAdd: async (
+    key: string,
+    score: number,
+    member: string,
+  ): Promise<RedisMutationResult<{ key: string; member: string; score: number; added: boolean }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command([
+        'ZADD',
+        key,
+        String(score),
+        member,
+      ]);
+      if (typeof response !== 'number') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected ZADD response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, member, score, added: response > 0 },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisStreamAdd: async (
+    key: string,
+    entries: Array<{ field: string; value: string }>,
+  ): Promise<RedisMutationResult<{ key: string; entryId: string }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+    if (entries.length === 0) {
+      return {
+        ok: false,
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Provide at least one stream field/value pair.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    const commandParts = ['XADD', key, '*'];
+    entries.forEach((entry) => {
+      commandParts.push(entry.field, entry.value);
+    });
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command(commandParts);
+      if (typeof response !== 'string') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected XADD response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, entryId: response },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeRedisKeyDelete: async (
+    key: string,
+  ): Promise<RedisMutationResult<{ key: string; deleted: boolean }>> => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Redis before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'redis') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Redis.',
+        },
+      };
+    }
+    if (!('command' in activeClient) || typeof activeClient.command !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'REDIS_COMMAND_UNAVAILABLE',
+          message: 'Active Redis client does not support mutation commands.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const response = await (activeClient as RedisCommandClient).command(['DEL', key]);
+      if (typeof response !== 'number') {
+        return {
+          ok: false,
+          error: {
+            code: 'REDIS_MUTATION_FAILED',
+            message: `Unexpected DEL response: ${String(response)}`,
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: { key, deleted: response > 0 },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapRedisMutationError(error),
+      };
+    }
+  },
+  executeMemcachedSet: async (
+    key: string,
+    value: string,
+    options: { ttlSeconds?: number; flags?: number } = {},
+  ): Promise<
+    MemcachedMutationResult<{
+      key: string;
+      stored: boolean;
+      flags: number;
+      ttlSeconds: number;
+      bytes: number;
+    }>
+  > => {
+    if (status.state !== 'connected' || !activeClient) {
+      return {
+        ok: false,
+        error: {
+          code: 'NOT_CONNECTED',
+          message: 'Connect to Memcached before mutating keys.',
+        },
+      };
+    }
+    if (status.activeKind !== 'memcached') {
+      return {
+        ok: false,
+        error: {
+          code: 'WRONG_CONNECTION_KIND',
+          message: 'Active connection is not Memcached.',
+        },
+      };
+    }
+    if (!('set' in activeClient) || typeof activeClient.set !== 'function') {
+      return {
+        ok: false,
+        error: {
+          code: 'MEMCACHED_COMMAND_UNAVAILABLE',
+          message: 'Active Memcached client does not support set operation.',
+        },
+      };
+    }
+
+    const mutationError = ensureMutationAllowed();
+    if (mutationError) {
+      return { ok: false, error: mutationError };
+    }
+
+    try {
+      const result = await (activeClient as MemcachedCommandClient).set(key, value, options);
+      if (!result.stored) {
+        return {
+          ok: false,
+          error: {
+            code: 'MEMCACHED_NOT_STORED',
+            message: 'Memcached did not store the provided value.',
+          },
+        };
+      }
+      return {
+        ok: true,
+        data: {
+          key,
+          stored: result.stored,
+          flags: result.flags,
+          ttlSeconds: result.ttlSeconds,
+          bytes: result.bytes,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: mapMemcachedMutationError(error),
+      };
+    }
+  },
   connect: async (
     profileId: string,
     runtimeCredentials?: ConnectionRuntimeCredentials,
@@ -400,8 +1022,14 @@ export const connectionSessionService = {
         safetyMode: 'readOnly',
         safetyUpdatedAt: new Date().toISOString(),
         ...(profile.environment === 'prod'
-          ? { safetyReason: 'Production profiles default to read-only mode.' }
-          : { safetyReason: 'Connections start in read-only mode by default.' }),
+          ? {
+              safetyReason:
+                'Production profiles default to read-only mode. Unlock mutations explicitly to run write operations.',
+            }
+          : {
+              safetyReason:
+                'Connections start in read-only mode by default. Unlock mutations to run write operations.',
+            }),
         lastConnectionError: null,
       });
       activeProfile = profile;
@@ -438,7 +1066,7 @@ export const connectionSessionService = {
         environmentLabel: null,
         safetyMode: 'readOnly',
         safetyUpdatedAt: new Date().toISOString(),
-        safetyReason: 'Connection ended. Mode reset to read-only.',
+        safetyReason: 'Connection ended. Mode reset to read-only. Unlock mutations to run write operations.',
         pendingProfileId: null,
       });
     }
@@ -486,7 +1114,7 @@ export const connectionSessionService = {
     updateStatus({
       safetyMode: 'readOnly',
       safetyUpdatedAt: new Date().toISOString(),
-      safetyReason: 'Mutations relocked by user.',
+      safetyReason: 'Mutations relocked by user. Unlock mutations to run write operations.',
     });
     return { ok: true as const, data: status };
   },

@@ -8,6 +8,7 @@ import {
   connectionsSwitchChannel,
   jobsCancelChannel,
   memcachedGetChannel,
+  memcachedSetChannel,
   memcachedStatsGetChannel,
   mutationsRelockChannel,
   mutationsUnlockChannel,
@@ -30,6 +31,8 @@ import {
   type JobsCancelResponse,
   type MemcachedGetRequest,
   type MemcachedGetResponse,
+  type MemcachedSetRequest,
+  type MemcachedSetResponse,
   type MemcachedStatsGetRequest,
   type MemcachedStatsGetResponse,
   type MutationsRelockRequest,
@@ -68,20 +71,41 @@ import {
   redisKeysSearchDoneEventChannel,
   redisKeysSearchProgressEventChannel,
   redisKeysSearchStartChannel,
+  redisHashSetFieldChannel,
+  redisKeyDeleteChannel,
   redisInspectDoneEventChannel,
+  redisListPushChannel,
   redisInspectProgressEventChannel,
   redisInspectStartChannel,
+  redisSetAddChannel,
+  redisStreamAddChannel,
+  redisStringSetChannel,
+  redisZSetAddChannel,
   type RedisInspectDoneEvent,
   type RedisInspectCopyRequest,
   type RedisInspectCopyResponse,
   type RedisInspectProgressEvent,
   type RedisInspectStartRequest,
   type RedisInspectStartResponse,
+  type RedisHashSetFieldRequest,
+  type RedisHashSetFieldResponse,
   redisInspectCopyChannel,
+  type RedisKeyDeleteRequest,
+  type RedisKeyDeleteResponse,
   type RedisKeysSearchDoneEvent,
   type RedisKeysSearchProgressEvent,
   type RedisKeysSearchStartRequest,
   type RedisKeysSearchStartResponse,
+  type RedisListPushRequest,
+  type RedisListPushResponse,
+  type RedisSetAddRequest,
+  type RedisSetAddResponse,
+  type RedisStreamAddRequest,
+  type RedisStreamAddResponse,
+  type RedisStringSetRequest,
+  type RedisStringSetResponse,
+  type RedisZSetAddRequest,
+  type RedisZSetAddResponse,
 } from '../shared/ipc/ipc.contract';
 
 export interface RendererApi {
@@ -131,9 +155,19 @@ export interface RendererApi {
     onProgress: (listener: (event: RedisInspectProgressEvent) => void) => () => void;
     onDone: (listener: (event: RedisInspectDoneEvent) => void) => () => void;
   };
+  redisMutations?: {
+    stringSet: (payload: RedisStringSetRequest) => Promise<RedisStringSetResponse>;
+    hashSetField: (payload: RedisHashSetFieldRequest) => Promise<RedisHashSetFieldResponse>;
+    listPush: (payload: RedisListPushRequest) => Promise<RedisListPushResponse>;
+    setAdd: (payload: RedisSetAddRequest) => Promise<RedisSetAddResponse>;
+    zsetAdd: (payload: RedisZSetAddRequest) => Promise<RedisZSetAddResponse>;
+    streamAdd: (payload: RedisStreamAddRequest) => Promise<RedisStreamAddResponse>;
+    keyDelete: (payload: RedisKeyDeleteRequest) => Promise<RedisKeyDeleteResponse>;
+  };
   memcached?: {
     get: (payload: MemcachedGetRequest) => Promise<MemcachedGetResponse>;
     getStats: (payload?: MemcachedStatsGetRequest) => Promise<MemcachedStatsGetResponse>;
+    set?: (payload: MemcachedSetRequest) => Promise<MemcachedSetResponse>;
   };
   jobs?: {
     cancel: (payload: JobsCancelRequest) => Promise<JobsCancelResponse>;
@@ -215,9 +249,19 @@ export const rendererApi: RendererApi = {
       };
     },
   },
+  redisMutations: {
+    stringSet: async (payload) => ipcRenderer.invoke(redisStringSetChannel, payload),
+    hashSetField: async (payload) => ipcRenderer.invoke(redisHashSetFieldChannel, payload),
+    listPush: async (payload) => ipcRenderer.invoke(redisListPushChannel, payload),
+    setAdd: async (payload) => ipcRenderer.invoke(redisSetAddChannel, payload),
+    zsetAdd: async (payload) => ipcRenderer.invoke(redisZSetAddChannel, payload),
+    streamAdd: async (payload) => ipcRenderer.invoke(redisStreamAddChannel, payload),
+    keyDelete: async (payload) => ipcRenderer.invoke(redisKeyDeleteChannel, payload),
+  },
   memcached: {
     get: async (payload) => ipcRenderer.invoke(memcachedGetChannel, payload),
     getStats: async (payload = {}) => ipcRenderer.invoke(memcachedStatsGetChannel, payload),
+    set: async (payload) => ipcRenderer.invoke(memcachedSetChannel, payload),
   },
   jobs: {
     cancel: async (payload) => ipcRenderer.invoke(jobsCancelChannel, payload),

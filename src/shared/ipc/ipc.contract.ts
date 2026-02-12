@@ -76,8 +76,16 @@ export const redisInspectStartChannel = 'redisInspect:start' as const;
 export const redisInspectProgressEventChannel = 'redisInspect:progress' as const;
 export const redisInspectDoneEventChannel = 'redisInspect:done' as const;
 export const redisInspectCopyChannel = 'redisInspect:copy' as const;
+export const redisStringSetChannel = 'redisMutations:string:set' as const;
+export const redisHashSetFieldChannel = 'redisMutations:hash:setField' as const;
+export const redisListPushChannel = 'redisMutations:list:push' as const;
+export const redisSetAddChannel = 'redisMutations:set:add' as const;
+export const redisZSetAddChannel = 'redisMutations:zset:add' as const;
+export const redisStreamAddChannel = 'redisMutations:stream:add' as const;
+export const redisKeyDeleteChannel = 'redisMutations:key:delete' as const;
 export const memcachedGetChannel = 'memcached:get' as const;
 export const memcachedStatsGetChannel = 'memcached:stats:get' as const;
+export const memcachedSetChannel = 'memcached:set' as const;
 
 export const profilesListRequestSchema = z.object({}).strict();
 export const profilesListResponseSchema = z.union([
@@ -688,26 +696,177 @@ export const redisInspectCopyResponseSchema = z.union([
   errorEnvelopeSchema,
 ]);
 
+const redisMutationKeySchema = z.string().trim().min(1).max(2048);
+const redisMutationValueSchema = z.string().max(8 * 1024 * 1024);
+
+export const redisStringSetRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    value: redisMutationValueSchema,
+  })
+  .strict();
+
+export const redisStringSetDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+  })
+  .strict();
+
+export const redisStringSetResponseSchema = z.union([
+  okEnvelopeSchema(redisStringSetDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisHashSetFieldRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    field: z.string().min(1).max(2048),
+    value: redisMutationValueSchema,
+  })
+  .strict();
+
+export const redisHashSetFieldDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    field: z.string().min(1).max(2048),
+    created: z.boolean(),
+  })
+  .strict();
+
+export const redisHashSetFieldResponseSchema = z.union([
+  okEnvelopeSchema(redisHashSetFieldDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisListPushRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    value: redisMutationValueSchema,
+    direction: z.enum(['left', 'right']).default('right'),
+  })
+  .strict();
+
+export const redisListPushDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    direction: z.enum(['left', 'right']),
+    length: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const redisListPushResponseSchema = z.union([
+  okEnvelopeSchema(redisListPushDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisSetAddRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    member: z.string().min(1).max(2048),
+  })
+  .strict();
+
+export const redisSetAddDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    member: z.string().min(1).max(2048),
+    added: z.boolean(),
+  })
+  .strict();
+
+export const redisSetAddResponseSchema = z.union([
+  okEnvelopeSchema(redisSetAddDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisZSetAddRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    member: z.string().min(1).max(2048),
+    score: z.number().finite(),
+  })
+  .strict();
+
+export const redisZSetAddDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    member: z.string().min(1).max(2048),
+    score: z.number().finite(),
+    added: z.boolean(),
+  })
+  .strict();
+
+export const redisZSetAddResponseSchema = z.union([
+  okEnvelopeSchema(redisZSetAddDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisStreamEntryInputSchema = z
+  .object({
+    field: z.string().trim().min(1).max(2048),
+    value: redisMutationValueSchema,
+  })
+  .strict();
+
+export const redisStreamAddRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    entries: z.array(redisStreamEntryInputSchema).min(1).max(200),
+  })
+  .strict();
+
+export const redisStreamAddDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    entryId: z.string().min(1),
+  })
+  .strict();
+
+export const redisStreamAddResponseSchema = z.union([
+  okEnvelopeSchema(redisStreamAddDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const redisKeyDeleteRequestSchema = z
+  .object({
+    key: redisMutationKeySchema,
+  })
+  .strict();
+
+export const redisKeyDeleteDataSchema = z
+  .object({
+    key: redisMutationKeySchema,
+    deleted: z.boolean(),
+  })
+  .strict();
+
+export const redisKeyDeleteResponseSchema = z.union([
+  okEnvelopeSchema(redisKeyDeleteDataSchema),
+  errorEnvelopeSchema,
+]);
+
+const memcachedKeySchema = z
+  .string()
+  .min(1)
+  .max(250)
+  .refine((value) => !/\s/.test(value), {
+    message: 'Memcached key must not contain whitespace characters.',
+  })
+  .refine((value) => {
+    for (const char of value) {
+      const code = char.charCodeAt(0);
+      if (code <= 0x1f || code === 0x7f) {
+        return false;
+      }
+    }
+    return true;
+  }, {
+    message: 'Memcached key must not contain control characters.',
+  });
+
 export const memcachedGetRequestSchema = z
   .object({
-    key: z
-      .string()
-      .min(1)
-      .max(250)
-      .refine((value) => !/\s/.test(value), {
-        message: 'Memcached key must not contain whitespace characters.',
-      })
-      .refine((value) => {
-        for (const char of value) {
-          const code = char.charCodeAt(0);
-          if (code <= 0x1f || code === 0x7f) {
-            return false;
-          }
-        }
-        return true;
-      }, {
-        message: 'Memcached key must not contain control characters.',
-      }),
+    key: memcachedKeySchema,
   })
   .strict();
 
@@ -746,6 +905,30 @@ export const memcachedStatsGetDataSchema = z
   .strict();
 export const memcachedStatsGetResponseSchema = z.union([
   okEnvelopeSchema(memcachedStatsGetDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const memcachedSetRequestSchema = z
+  .object({
+    key: memcachedKeySchema,
+    value: z.string().max(8 * 1024 * 1024),
+    flags: z.number().int().min(0).optional(),
+    ttlSeconds: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+export const memcachedSetDataSchema = z
+  .object({
+    key: memcachedKeySchema,
+    stored: z.boolean(),
+    flags: z.number().int().nonnegative(),
+    ttlSeconds: z.number().int().nonnegative(),
+    bytes: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export const memcachedSetResponseSchema = z.union([
+  okEnvelopeSchema(memcachedSetDataSchema),
   errorEnvelopeSchema,
 ]);
 
@@ -883,6 +1066,48 @@ export const ipcContract = {
     responseSchema: redisInspectCopyResponseSchema,
     description: 'Copy inspected Redis value in safe-redacted form by default.',
   },
+  redisStringSet: {
+    channel: redisStringSetChannel,
+    requestSchema: redisStringSetRequestSchema,
+    responseSchema: redisStringSetResponseSchema,
+    description: 'Set Redis string value when mutation mode is unlocked.',
+  },
+  redisHashSetField: {
+    channel: redisHashSetFieldChannel,
+    requestSchema: redisHashSetFieldRequestSchema,
+    responseSchema: redisHashSetFieldResponseSchema,
+    description: 'Set Redis hash field when mutation mode is unlocked.',
+  },
+  redisListPush: {
+    channel: redisListPushChannel,
+    requestSchema: redisListPushRequestSchema,
+    responseSchema: redisListPushResponseSchema,
+    description: 'Push Redis list value when mutation mode is unlocked.',
+  },
+  redisSetAdd: {
+    channel: redisSetAddChannel,
+    requestSchema: redisSetAddRequestSchema,
+    responseSchema: redisSetAddResponseSchema,
+    description: 'Add Redis set member when mutation mode is unlocked.',
+  },
+  redisZSetAdd: {
+    channel: redisZSetAddChannel,
+    requestSchema: redisZSetAddRequestSchema,
+    responseSchema: redisZSetAddResponseSchema,
+    description: 'Add Redis sorted-set member when mutation mode is unlocked.',
+  },
+  redisStreamAdd: {
+    channel: redisStreamAddChannel,
+    requestSchema: redisStreamAddRequestSchema,
+    responseSchema: redisStreamAddResponseSchema,
+    description: 'Append Redis stream entry when mutation mode is unlocked.',
+  },
+  redisKeyDelete: {
+    channel: redisKeyDeleteChannel,
+    requestSchema: redisKeyDeleteRequestSchema,
+    responseSchema: redisKeyDeleteResponseSchema,
+    description: 'Delete Redis key when mutation mode is unlocked.',
+  },
   memcachedGet: {
     channel: memcachedGetChannel,
     requestSchema: memcachedGetRequestSchema,
@@ -894,6 +1119,12 @@ export const ipcContract = {
     requestSchema: memcachedStatsGetRequestSchema,
     responseSchema: memcachedStatsGetResponseSchema,
     description: 'Fetch Memcached server stats snapshot.',
+  },
+  memcachedSet: {
+    channel: memcachedSetChannel,
+    requestSchema: memcachedSetRequestSchema,
+    responseSchema: memcachedSetResponseSchema,
+    description: 'Set Memcached value by key when mutation mode is unlocked.',
   },
 } as const;
 
@@ -977,7 +1208,23 @@ export type RedisInspectProgressEvent = z.infer<typeof redisInspectProgressEvent
 export type RedisInspectDoneEvent = z.infer<typeof redisInspectDoneEventSchema>;
 export type RedisInspectCopyRequest = z.infer<typeof redisInspectCopyRequestSchema>;
 export type RedisInspectCopyResponse = z.infer<typeof redisInspectCopyResponseSchema>;
+export type RedisStringSetRequest = z.infer<typeof redisStringSetRequestSchema>;
+export type RedisStringSetResponse = z.infer<typeof redisStringSetResponseSchema>;
+export type RedisHashSetFieldRequest = z.infer<typeof redisHashSetFieldRequestSchema>;
+export type RedisHashSetFieldResponse = z.infer<typeof redisHashSetFieldResponseSchema>;
+export type RedisListPushRequest = z.infer<typeof redisListPushRequestSchema>;
+export type RedisListPushResponse = z.infer<typeof redisListPushResponseSchema>;
+export type RedisSetAddRequest = z.infer<typeof redisSetAddRequestSchema>;
+export type RedisSetAddResponse = z.infer<typeof redisSetAddResponseSchema>;
+export type RedisZSetAddRequest = z.infer<typeof redisZSetAddRequestSchema>;
+export type RedisZSetAddResponse = z.infer<typeof redisZSetAddResponseSchema>;
+export type RedisStreamAddRequest = z.infer<typeof redisStreamAddRequestSchema>;
+export type RedisStreamAddResponse = z.infer<typeof redisStreamAddResponseSchema>;
+export type RedisKeyDeleteRequest = z.infer<typeof redisKeyDeleteRequestSchema>;
+export type RedisKeyDeleteResponse = z.infer<typeof redisKeyDeleteResponseSchema>;
 export type MemcachedGetRequest = z.infer<typeof memcachedGetRequestSchema>;
 export type MemcachedGetResponse = z.infer<typeof memcachedGetResponseSchema>;
 export type MemcachedStatsGetRequest = z.infer<typeof memcachedStatsGetRequestSchema>;
 export type MemcachedStatsGetResponse = z.infer<typeof memcachedStatsGetResponseSchema>;
+export type MemcachedSetRequest = z.infer<typeof memcachedSetRequestSchema>;
+export type MemcachedSetResponse = z.infer<typeof memcachedSetResponseSchema>;

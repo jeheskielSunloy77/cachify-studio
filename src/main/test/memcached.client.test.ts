@@ -158,4 +158,96 @@ describe('memcached client', () => {
     await expect(client.get('invalid\r\nkey')).rejects.toThrow(/INVALID_KEY/);
     await client.disconnect();
   });
+
+  it('supports set command with flags/ttl and returns storage metadata', async () => {
+    let expectedSetBytes = 0;
+    let setAwaitingValue = false;
+    const { host, port } = await startServer((command, socket) => {
+      if (command === 'version') {
+        socket.write('VERSION 1.6.0\r\n');
+        return;
+      }
+      if (command.startsWith('set item 7 120 ')) {
+        const bytesToken = command.split(' ')[4] ?? '';
+        expectedSetBytes = Number.parseInt(bytesToken, 10);
+        setAwaitingValue = true;
+        return;
+      }
+      if (setAwaitingValue) {
+        expect(Buffer.byteLength(command, 'utf8')).toBe(expectedSetBytes);
+        expect(command).toBe('hello!');
+        socket.write('STORED\r\n');
+        setAwaitingValue = false;
+      }
+    });
+
+    const client = await connectMemcachedClient({
+      host,
+      port,
+      timeoutMs: 500,
+      authMode: 'none',
+    });
+
+    const result = await client.set('item', 'hello!', { flags: 7, ttlSeconds: 120 });
+    expect(result).toEqual({
+      stored: true,
+      flags: 7,
+      ttlSeconds: 120,
+      bytes: 6,
+    });
+
+    await client.disconnect();
+  });
+
+  it('validates memcached set flags/ttl arguments', async () => {
+    const { host, port } = await startServer((command, socket) => {
+      if (command === 'version') {
+        socket.write('VERSION 1.6.0\r\n');
+      }
+    });
+
+    const client = await connectMemcachedClient({
+      host,
+      port,
+      timeoutMs: 500,
+      authMode: 'none',
+    });
+
+    await expect(
+      client.set('item', 'value', { flags: -1 }),
+    ).rejects.toThrow(/INVALID_ARGUMENT/);
+    await expect(
+      client.set('item', 'value', { ttlSeconds: -5 }),
+    ).rejects.toThrow(/INVALID_ARGUMENT/);
+
+    await client.disconnect();
+  });
+
+  it('raises protocol errors for malformed set responses', async () => {
+    let setAwaitingValue = false;
+    const { host, port } = await startServer((command, socket) => {
+      if (command === 'version') {
+        socket.write('VERSION 1.6.0\r\n');
+        return;
+      }
+      if (command.startsWith('set broken 0 0 ')) {
+        setAwaitingValue = true;
+        return;
+      }
+      if (setAwaitingValue) {
+        socket.write('CLIENT_ERROR bad command line format\r\n');
+        setAwaitingValue = false;
+      }
+    });
+
+    const client = await connectMemcachedClient({
+      host,
+      port,
+      timeoutMs: 500,
+      authMode: 'none',
+    });
+
+    await expect(client.set('broken', 'value')).rejects.toThrow(/PROTOCOL_ERROR/);
+    await client.disconnect();
+  });
 });

@@ -24,11 +24,22 @@ export type MemcachedGetResult =
     };
 
 export type MemcachedStatsResult = Array<{ key: string; value: string }>;
+export type MemcachedSetResult = {
+  stored: boolean;
+  flags: number;
+  ttlSeconds: number;
+  bytes: number;
+};
 
 type MemcachedClientHandle = {
   disconnect: () => Promise<void>;
   get: (key: string) => Promise<MemcachedGetResult>;
   stats: () => Promise<MemcachedStatsResult>;
+  set: (
+    key: string,
+    value: string,
+    options?: { flags?: number; ttlSeconds?: number },
+  ) => Promise<MemcachedSetResult>;
 };
 
 const isValidMemcachedKey = (key: string) => {
@@ -48,6 +59,17 @@ const isValidMemcachedKey = (key: string) => {
 const writeLine = (socket: Socket, command: string) =>
   new Promise<void>((resolve, reject) => {
     socket.write(command, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+
+const writePayload = (socket: Socket, payload: Buffer) =>
+  new Promise<void>((resolve, reject) => {
+    socket.write(payload, (error) => {
       if (error) {
         reject(error);
         return;
@@ -245,9 +267,58 @@ export const connectMemcachedClient = async (
     return rows;
   };
 
+  const set = async (
+    key: string,
+    value: string,
+    options: { flags?: number; ttlSeconds?: number } = {},
+  ): Promise<MemcachedSetResult> => {
+    if (!isValidMemcachedKey(key)) {
+      throw new Error('INVALID_KEY:Memcached key must not contain whitespace or control characters.');
+    }
+
+    const flags = options.flags ?? 0;
+    const ttlSeconds = options.ttlSeconds ?? 0;
+    if (
+      !Number.isInteger(flags) ||
+      flags < 0 ||
+      !Number.isInteger(ttlSeconds) ||
+      ttlSeconds < 0
+    ) {
+      throw new Error('INVALID_ARGUMENT:flags and ttlSeconds must be non-negative integers.');
+    }
+
+    const valueBuffer = Buffer.from(value, 'utf8');
+    const header = Buffer.from(
+      `set ${key} ${flags} ${ttlSeconds} ${valueBuffer.length}\r\n`,
+      'utf8',
+    );
+    const tail = Buffer.from('\r\n', 'utf8');
+    await writePayload(socket, Buffer.concat([header, valueBuffer, tail]));
+
+    const line = await readLine();
+    if (line === 'STORED') {
+      return {
+        stored: true,
+        flags,
+        ttlSeconds,
+        bytes: valueBuffer.length,
+      };
+    }
+    if (line === 'NOT_STORED') {
+      return {
+        stored: false,
+        flags,
+        ttlSeconds,
+        bytes: valueBuffer.length,
+      };
+    }
+    throw new Error(`PROTOCOL_ERROR:${line}`);
+  };
+
   return {
     get,
     stats,
+    set,
     disconnect: async () => {
       socket.end();
       socket.destroy();

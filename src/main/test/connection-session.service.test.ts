@@ -361,4 +361,258 @@ describe('connection session service', () => {
       expect(result.error.code).toBe('VALIDATION_ERROR');
     }
   });
+
+  it('blocks Redis mutations while safety mode is readOnly', async () => {
+    const redisCommand = vi.fn(async () => 'OK');
+    mocks.getProfileById.mockReturnValue({
+      id: '88888888-8888-4888-8888-888888888888',
+      kind: 'redis',
+      name: 'Redis Guard',
+      host: 'localhost',
+      port: 6379,
+      environment: 'local',
+      tags: [],
+      favorite: false,
+      credentialPolicy: 'promptEverySession',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+    mocks.connectRedisClient.mockResolvedValue({
+      disconnect: vi.fn(async () => undefined),
+      command: redisCommand,
+    });
+
+    const { connectionSessionService } = await import(
+      '../domain/cache/session/connection-session.service'
+    );
+    const connected = await connectionSessionService.connect(
+      '88888888-8888-4888-8888-888888888888',
+    );
+    expect(connected.ok).toBe(true);
+
+    const stringSet = await connectionSessionService.executeRedisStringSet('guard:key', 'value');
+    const hashSet = await connectionSessionService.executeRedisHashSetField(
+      'guard:hash',
+      'field',
+      'value',
+    );
+    const listPush = await connectionSessionService.executeRedisListPush(
+      'guard:list',
+      'value',
+      'right',
+    );
+    const setAdd = await connectionSessionService.executeRedisSetAdd('guard:set', 'member');
+    const zsetAdd = await connectionSessionService.executeRedisZSetAdd(
+      'guard:zset',
+      1.5,
+      'member',
+    );
+    const streamAdd = await connectionSessionService.executeRedisStreamAdd('guard:stream', [
+      { field: 'event', value: 'created' },
+    ]);
+    const deleteResult = await connectionSessionService.executeRedisKeyDelete('guard:key');
+
+    for (const blocked of [stringSet, hashSet, listPush, setAdd, zsetAdd, streamAdd, deleteResult]) {
+      expect(blocked.ok).toBe(false);
+      if ('error' in blocked) {
+        expect(blocked.error.code).toBe('MUTATION_BLOCKED_READ_ONLY');
+      }
+    }
+    expect(redisCommand).not.toHaveBeenCalled();
+  });
+
+  it('executes Redis mutation commands in unlocked mode and returns typed results', async () => {
+    const redisCommand = vi
+      .fn()
+      .mockResolvedValueOnce('OK')
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce(1)
+      .mockResolvedValueOnce('1710000000000-0')
+      .mockResolvedValueOnce(1);
+    mocks.getProfileById.mockReturnValue({
+      id: '99999999-9999-4999-8999-999999999999',
+      kind: 'redis',
+      name: 'Redis Mutations',
+      host: 'localhost',
+      port: 6379,
+      environment: 'local',
+      tags: [],
+      favorite: false,
+      credentialPolicy: 'promptEverySession',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+    mocks.connectRedisClient.mockResolvedValue({
+      disconnect: vi.fn(async () => undefined),
+      command: redisCommand,
+    });
+
+    const { connectionSessionService } = await import(
+      '../domain/cache/session/connection-session.service'
+    );
+    await connectionSessionService.connect('99999999-9999-4999-8999-999999999999');
+    await connectionSessionService.unlockMutations('UNLOCK_MUTATIONS');
+
+    const stringSet = await connectionSessionService.executeRedisStringSet('string:key', 'next');
+    const hashSet = await connectionSessionService.executeRedisHashSetField('hash:key', 'fieldA', 'valueA');
+    const listPush = await connectionSessionService.executeRedisListPush('list:key', 'value', 'right');
+    const setAdd = await connectionSessionService.executeRedisSetAdd('set:key', 'memberA');
+    const zsetAdd = await connectionSessionService.executeRedisZSetAdd('zset:key', 1.5, 'memberZ');
+    const streamAdd = await connectionSessionService.executeRedisStreamAdd('stream:key', [
+      { field: 'event', value: 'created' },
+      { field: 'id', value: '42' },
+    ]);
+    const deleteResult = await connectionSessionService.executeRedisKeyDelete('delete:key');
+
+    expect(stringSet).toEqual({
+      ok: true,
+      data: { key: 'string:key' },
+    });
+    expect(hashSet).toEqual({
+      ok: true,
+      data: { key: 'hash:key', field: 'fieldA', created: true },
+    });
+    expect(listPush).toEqual({
+      ok: true,
+      data: { key: 'list:key', direction: 'right', length: 3 },
+    });
+    expect(setAdd).toEqual({
+      ok: true,
+      data: { key: 'set:key', member: 'memberA', added: true },
+    });
+    expect(zsetAdd).toEqual({
+      ok: true,
+      data: { key: 'zset:key', member: 'memberZ', score: 1.5, added: true },
+    });
+    expect(streamAdd).toEqual({
+      ok: true,
+      data: { key: 'stream:key', entryId: '1710000000000-0' },
+    });
+    expect(deleteResult).toEqual({
+      ok: true,
+      data: { key: 'delete:key', deleted: true },
+    });
+
+    expect(redisCommand).toHaveBeenNthCalledWith(1, ['SET', 'string:key', 'next']);
+    expect(redisCommand).toHaveBeenNthCalledWith(2, ['HSET', 'hash:key', 'fieldA', 'valueA']);
+    expect(redisCommand).toHaveBeenNthCalledWith(3, ['RPUSH', 'list:key', 'value']);
+    expect(redisCommand).toHaveBeenNthCalledWith(4, ['SADD', 'set:key', 'memberA']);
+    expect(redisCommand).toHaveBeenNthCalledWith(5, ['ZADD', 'zset:key', '1.5', 'memberZ']);
+    expect(redisCommand).toHaveBeenNthCalledWith(6, [
+      'XADD',
+      'stream:key',
+      '*',
+      'event',
+      'created',
+      'id',
+      '42',
+    ]);
+    expect(redisCommand).toHaveBeenNthCalledWith(7, ['DEL', 'delete:key']);
+  });
+
+  it('maps Redis mutation wrong-type errors to deterministic envelope codes', async () => {
+    mocks.getProfileById.mockReturnValue({
+      id: '10101010-1010-4010-8010-101010101010',
+      kind: 'redis',
+      name: 'Redis Wrong Type',
+      host: 'localhost',
+      port: 6379,
+      environment: 'local',
+      tags: [],
+      favorite: false,
+      credentialPolicy: 'promptEverySession',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+    mocks.connectRedisClient.mockResolvedValue({
+      disconnect: vi.fn(async () => undefined),
+      command: vi.fn(async () => {
+        throw new Error('REDIS_ERROR:WRONGTYPE Operation against a key holding the wrong kind of value');
+      }),
+    });
+
+    const { connectionSessionService } = await import(
+      '../domain/cache/session/connection-session.service'
+    );
+    await connectionSessionService.connect('10101010-1010-4010-8010-101010101010');
+    await connectionSessionService.unlockMutations('UNLOCK_MUTATIONS');
+    const result = await connectionSessionService.executeRedisStringSet('typed:key', 'value');
+    expect(result.ok).toBe(false);
+    if ('error' in result) {
+      expect(result.error.code).toBe('REDIS_WRONG_TYPE');
+    }
+  });
+
+  it('blocks Memcached set while readOnly and writes once unlocked', async () => {
+    const memcachedSet = vi.fn(async () => ({
+      stored: true,
+      flags: 7,
+      ttlSeconds: 120,
+      bytes: 6,
+    }));
+    mocks.getProfileById.mockReturnValue({
+      id: '12121212-1212-4121-8121-121212121212',
+      kind: 'memcached',
+      name: 'Memcached Mutations',
+      host: 'localhost',
+      port: 11211,
+      environment: 'local',
+      tags: [],
+      favorite: false,
+      credentialPolicy: 'promptEverySession',
+      redisAuth: { mode: 'none', hasPassword: false },
+      redisTls: { enabled: false },
+      memcachedAuth: { mode: 'none', hasPassword: false },
+      createdAt: 'now',
+      updatedAt: 'now',
+    });
+    mocks.connectMemcachedClient.mockResolvedValue({
+      disconnect: vi.fn(async () => undefined),
+      get: vi.fn(async () => ({ found: false, flags: null, bytes: null, value: null })),
+      stats: vi.fn(async () => []),
+      set: memcachedSet,
+    });
+
+    const { connectionSessionService } = await import(
+      '../domain/cache/session/connection-session.service'
+    );
+    await connectionSessionService.connect('12121212-1212-4121-8121-121212121212');
+    const blocked = await connectionSessionService.executeMemcachedSet('mc:key', 'value');
+    expect(blocked.ok).toBe(false);
+    if ('error' in blocked) {
+      expect(blocked.error.code).toBe('MUTATION_BLOCKED_READ_ONLY');
+    }
+    expect(memcachedSet).not.toHaveBeenCalled();
+
+    await connectionSessionService.unlockMutations('UNLOCK_MUTATIONS');
+    const stored = await connectionSessionService.executeMemcachedSet('mc:key', 'value', {
+      flags: 7,
+      ttlSeconds: 120,
+    });
+    expect(stored).toEqual({
+      ok: true,
+      data: {
+        key: 'mc:key',
+        stored: true,
+        flags: 7,
+        ttlSeconds: 120,
+        bytes: 6,
+      },
+    });
+    expect(memcachedSet).toHaveBeenCalledWith('mc:key', 'value', {
+      flags: 7,
+      ttlSeconds: 120,
+    });
+  });
 });

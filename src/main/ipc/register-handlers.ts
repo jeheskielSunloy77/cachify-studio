@@ -22,6 +22,9 @@ import {
 	memcachedGetChannel,
 	memcachedGetRequestSchema,
 	memcachedGetResponseSchema,
+	memcachedSetChannel,
+	memcachedSetRequestSchema,
+	memcachedSetResponseSchema,
 	memcachedStatsGetChannel,
 	memcachedStatsGetRequestSchema,
 	memcachedStatsGetResponseSchema,
@@ -64,7 +67,16 @@ import {
 	profilesUpdateChannel,
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
+	redisHashSetFieldChannel,
+	redisHashSetFieldRequestSchema,
+	redisHashSetFieldResponseSchema,
 	redisInspectDoneEventChannel,
+	redisKeyDeleteChannel,
+	redisKeyDeleteRequestSchema,
+	redisKeyDeleteResponseSchema,
+	redisListPushChannel,
+	redisListPushRequestSchema,
+	redisListPushResponseSchema,
 	redisInspectCopyChannel,
 	redisInspectCopyRequestSchema,
 	redisInspectCopyResponseSchema,
@@ -81,6 +93,18 @@ import {
 	redisKeysSearchStartChannel,
 	redisKeysSearchStartRequestSchema,
 	redisKeysSearchStartResponseSchema,
+	redisSetAddChannel,
+	redisSetAddRequestSchema,
+	redisSetAddResponseSchema,
+	redisStreamAddChannel,
+	redisStreamAddRequestSchema,
+	redisStreamAddResponseSchema,
+	redisStringSetChannel,
+	redisStringSetRequestSchema,
+	redisStringSetResponseSchema,
+	redisZSetAddChannel,
+	redisZSetAddRequestSchema,
+	redisZSetAddResponseSchema,
 	type AppPingResponse,
 	type ConnectionsConnectResponse,
 	type ConnectionsDisconnectResponse,
@@ -88,6 +112,7 @@ import {
 	type ConnectionsSwitchResponse,
 	type JobsCancelResponse,
 	type MemcachedGetResponse,
+	type MemcachedSetResponse,
 	type MemcachedStatsGetResponse,
 	type MutationsRelockResponse,
 	type MutationsUnlockResponse,
@@ -102,9 +127,16 @@ import {
 	type ProfilesSetTagsResponse,
 	type ProfilesToggleFavoriteResponse,
 	type ProfilesUpdateResponse,
+	type RedisHashSetFieldResponse,
 	type RedisInspectStartResponse,
 	type RedisInspectCopyResponse,
+	type RedisKeyDeleteResponse,
 	type RedisKeysSearchStartResponse,
+	type RedisListPushResponse,
+	type RedisSetAddResponse,
+	type RedisStreamAddResponse,
+	type RedisStringSetResponse,
+	type RedisZSetAddResponse,
 } from '../../shared/ipc/ipc.contract'
 import { getPingPayload } from '../domain/app.service'
 import { runRedisKeyDiscoveryJob } from '../domain/cache/explorer/redis-key-discovery.service'
@@ -931,6 +963,251 @@ const handleRedisInspectCopy = async (
 	)
 }
 
+const handleRedisStringSet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisStringSetResponse> => {
+	const parsed = redisStringSetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:string:set',
+			parsed.error.flatten(),
+		) as RedisStringSetResponse
+	}
+
+	const result = await connectionSessionService.executeRedisStringSet(
+		parsed.data.key,
+		parsed.data.value,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisStringSetResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisStringSetResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:string:set response envelope',
+	)
+}
+
+const handleRedisHashSetField = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisHashSetFieldResponse> => {
+	const parsed = redisHashSetFieldRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:hash:setField',
+			parsed.error.flatten(),
+		) as RedisHashSetFieldResponse
+	}
+
+	const result = await connectionSessionService.executeRedisHashSetField(
+		parsed.data.key,
+		parsed.data.field,
+		parsed.data.value,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisHashSetFieldResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisHashSetFieldResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:hash:setField response envelope',
+	)
+}
+
+const handleRedisListPush = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisListPushResponse> => {
+	const parsed = redisListPushRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:list:push',
+			parsed.error.flatten(),
+		) as RedisListPushResponse
+	}
+
+	const result = await connectionSessionService.executeRedisListPush(
+		parsed.data.key,
+		parsed.data.value,
+		parsed.data.direction,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisListPushResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisListPushResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:list:push response envelope',
+	)
+}
+
+const handleRedisSetAdd = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisSetAddResponse> => {
+	const parsed = redisSetAddRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:set:add',
+			parsed.error.flatten(),
+		) as RedisSetAddResponse
+	}
+
+	const result = await connectionSessionService.executeRedisSetAdd(
+		parsed.data.key,
+		parsed.data.member,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisSetAddResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisSetAddResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:set:add response envelope',
+	)
+}
+
+const handleRedisZSetAdd = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisZSetAddResponse> => {
+	const parsed = redisZSetAddRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:zset:add',
+			parsed.error.flatten(),
+		) as RedisZSetAddResponse
+	}
+
+	const result = await connectionSessionService.executeRedisZSetAdd(
+		parsed.data.key,
+		parsed.data.score,
+		parsed.data.member,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisZSetAddResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisZSetAddResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:zset:add response envelope',
+	)
+}
+
+const handleRedisStreamAdd = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisStreamAddResponse> => {
+	const parsed = redisStreamAddRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:stream:add',
+			parsed.error.flatten(),
+		) as RedisStreamAddResponse
+	}
+
+	const result = await connectionSessionService.executeRedisStreamAdd(
+		parsed.data.key,
+		parsed.data.entries,
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisStreamAddResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisStreamAddResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:stream:add response envelope',
+	)
+}
+
+const handleRedisKeyDelete = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RedisKeyDeleteResponse> => {
+	const parsed = redisKeyDeleteRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for redisMutations:key:delete',
+			parsed.error.flatten(),
+		) as RedisKeyDeleteResponse
+	}
+
+	const result = await connectionSessionService.executeRedisKeyDelete(parsed.data.key)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as RedisKeyDeleteResponse
+	}
+
+	return ensureResponseEnvelope(
+		redisKeyDeleteResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid redisMutations:key:delete response envelope',
+	)
+}
+
 const handleMemcachedGet = async (
 	_event: IpcMainInvokeEvent,
 	payload: unknown,
@@ -956,6 +1233,45 @@ const handleMemcachedGet = async (
 			data: normalizeMemcachedGetResult(parsed.data.key, result.data),
 		},
 		'Invalid memcached:get response envelope',
+	)
+}
+
+const handleMemcachedSet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<MemcachedSetResponse> => {
+	const parsed = memcachedSetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for memcached:set',
+			parsed.error.flatten(),
+		) as MemcachedSetResponse
+	}
+
+	const result = await connectionSessionService.executeMemcachedSet(
+		parsed.data.key,
+		parsed.data.value,
+		{
+			flags: parsed.data.flags,
+			ttlSeconds: parsed.data.ttlSeconds,
+		},
+	)
+	if ('error' in result) {
+		return errorEnvelope(
+			result.error.code,
+			result.error.message,
+			result.error.details,
+		) as MemcachedSetResponse
+	}
+
+	return ensureResponseEnvelope(
+		memcachedSetResponseSchema,
+		{
+			ok: true,
+			data: result.data,
+		},
+		'Invalid memcached:set response envelope',
 	)
 }
 
@@ -1010,6 +1326,14 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(jobsCancelChannel, handleJobsCancel)
 	ipcMain.handle(redisInspectStartChannel, handleRedisInspectStart)
 	ipcMain.handle(redisInspectCopyChannel, handleRedisInspectCopy)
+	ipcMain.handle(redisStringSetChannel, handleRedisStringSet)
+	ipcMain.handle(redisHashSetFieldChannel, handleRedisHashSetField)
+	ipcMain.handle(redisListPushChannel, handleRedisListPush)
+	ipcMain.handle(redisSetAddChannel, handleRedisSetAdd)
+	ipcMain.handle(redisZSetAddChannel, handleRedisZSetAdd)
+	ipcMain.handle(redisStreamAddChannel, handleRedisStreamAdd)
+	ipcMain.handle(redisKeyDeleteChannel, handleRedisKeyDelete)
 	ipcMain.handle(memcachedGetChannel, handleMemcachedGet)
 	ipcMain.handle(memcachedStatsGetChannel, handleMemcachedStatsGet)
+	ipcMain.handle(memcachedSetChannel, handleMemcachedSet)
 }
