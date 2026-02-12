@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../app/App';
@@ -1876,5 +1876,370 @@ describe('Redis explorer panel', () => {
     expect(screen.getByText('curr_items')).toBeInTheDocument();
     expect(screen.getByText('500')).toBeInTheDocument();
     expect(getStats).toHaveBeenCalledTimes(2);
+  });
+
+  it('surfaces read-only blocking near Redis mutation controls', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const stringSet = vi.fn(async () => ok({ key: 'guard:key' }));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-guard',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: async () =>
+          ok({
+            jobId: 'inspect-guard',
+            startedAt: new Date().toISOString(),
+          }),
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+      redisMutations: {
+        stringSet,
+        hashSetField: vi.fn(async () => ok({ key: 'guard:key', field: 'f', created: true })),
+        listPush: vi.fn(async () => ok({ key: 'guard:key', direction: 'right' as const, length: 1 })),
+        setAdd: vi.fn(async () => ok({ key: 'guard:key', member: 'm', added: true })),
+        zsetAdd: vi.fn(async () => ok({ key: 'guard:key', member: 'm', score: 1, added: true })),
+        streamAdd: vi.fn(async () => ok({ key: 'guard:key', entryId: '1-0' })),
+        keyDelete: vi.fn(async () => ok({ key: 'guard:key', deleted: false })),
+      },
+      connections: {
+        ...buildApi().connections,
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'profile-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'prod',
+            safetyMode: 'readOnly',
+            safetyReason: 'Production profiles default to read-only mode.',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-guard',
+      status: 'running',
+      keys: [{ key: 'guard:key', prefixSegments: ['guard', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-guard',
+      status: 'completed',
+      result: {
+        key: 'guard:key',
+        type: 'string',
+        ttlSeconds: -1,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 5,
+        previewBytes: 5,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        value: 'value',
+      },
+    });
+
+    expect(await screen.findByText(/Mutations blocked:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set string value' })).toBeDisabled();
+    expect(stringSet).not.toHaveBeenCalled();
+  });
+
+  it('executes unlocked Redis string mutation and requires delete confirmation', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const stringSet = vi.fn(async () => ok({ key: 'mut:key' }));
+    const keyDelete = vi.fn(async () => ok({ key: 'mut:key', deleted: true }));
+    const inspectStart = vi.fn(async () =>
+      ok({
+        jobId: 'inspect-mut',
+        startedAt: new Date().toISOString(),
+      }),
+    );
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-mut',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+      redisMutations: {
+        stringSet,
+        hashSetField: vi.fn(async () => ok({ key: 'mut:key', field: 'f', created: true })),
+        listPush: vi.fn(async () => ok({ key: 'mut:key', direction: 'right' as const, length: 1 })),
+        setAdd: vi.fn(async () => ok({ key: 'mut:key', member: 'm', added: true })),
+        zsetAdd: vi.fn(async () => ok({ key: 'mut:key', member: 'm', score: 1, added: true })),
+        streamAdd: vi.fn(async () => ok({ key: 'mut:key', entryId: '1-0' })),
+        keyDelete,
+      },
+      connections: {
+        ...buildApi().connections,
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'profile-1',
+            pendingProfileId: null,
+            activeKind: 'redis',
+            environmentLabel: 'local',
+            safetyMode: 'unlocked',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-mut',
+      status: 'running',
+      keys: [{ key: 'mut:key', prefixSegments: ['mut', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-mut',
+      status: 'completed',
+      result: {
+        key: 'mut:key',
+        type: 'string',
+        ttlSeconds: -1,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 5,
+        previewBytes: 5,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        value: 'value',
+      },
+    });
+
+    const valueInput = await screen.findByLabelText('Set string value');
+    fireEvent.change(valueInput, { target: { value: 'next-value' } });
+    await user.click(screen.getByRole('button', { name: 'Set string value' }));
+    await waitFor(() =>
+      expect(stringSet).toHaveBeenCalledWith({ key: 'mut:key', value: 'next-value' }),
+    );
+    await waitFor(() => expect(inspectStart).toHaveBeenCalledTimes(2));
+    onInspectDone?.({
+      jobId: 'inspect-mut',
+      status: 'completed',
+      result: {
+        key: 'mut:key',
+        type: 'string',
+        ttlSeconds: -1,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 10,
+        previewBytes: 10,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        value: 'next-value',
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Delete key' }));
+    expect(screen.getByRole('button', { name: 'Confirm delete' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Confirm delete' }));
+    await waitFor(() => expect(keyDelete).toHaveBeenCalledWith({ key: 'mut:key' }));
+    const keysList = await screen.findByTestId('redis-keys-list');
+    await waitFor(() => {
+      expect(within(keysList).queryByText('mut:key')).not.toBeInTheDocument();
+    });
+  });
+
+  it('blocks memcached set in read-only mode and writes when unlocked', async () => {
+    const set = vi.fn(async () =>
+      ok({
+        key: 'session:42',
+        stored: true,
+        flags: 7,
+        ttlSeconds: 60,
+        bytes: 11,
+      }),
+    );
+    const get = vi.fn(async () =>
+      ok({
+        key: 'session:42',
+        found: true,
+        valuePreview: '{"ok":true}',
+        flags: 7,
+        bytes: 11,
+        capReached: false,
+        previewBytes: 11,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+      }),
+    );
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      connections: {
+        ...buildApi().connections,
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'profile-mc',
+            pendingProfileId: null,
+            activeKind: 'memcached',
+            environmentLabel: 'local',
+            safetyMode: 'readOnly',
+            safetyReason: 'Mutations are blocked while safety mode is read-only.',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+      },
+      memcached: {
+        get,
+        getStats: vi.fn(async () => ok({ fetchedAt: new Date().toISOString(), stats: [] })),
+        set,
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText('Memcached key'), 'session:42');
+    fireEvent.change(screen.getByLabelText('Set value'), { target: { value: '{"ok":true}' } });
+    expect(await screen.findByText(/Memcached writes are blocked:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Set key' })).toBeDisabled();
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it('writes memcached key when unlocked and shows success feedback', async () => {
+    const set = vi.fn(async () =>
+      ok({
+        key: 'session:42',
+        stored: true,
+        flags: 0,
+        ttlSeconds: 0,
+        bytes: 11,
+      }),
+    );
+    const get = vi.fn(async () =>
+      ok({
+        key: 'session:42',
+        found: true,
+        valuePreview: '{"ok":true}',
+        flags: 0,
+        bytes: 11,
+        capReached: false,
+        previewBytes: 11,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+      }),
+    );
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      connections: {
+        ...buildApi().connections,
+        getStatus: async () =>
+          ok({
+            state: 'connected',
+            activeProfileId: 'profile-mc',
+            pendingProfileId: null,
+            activeKind: 'memcached',
+            environmentLabel: 'local',
+            safetyMode: 'unlocked',
+            safetyUpdatedAt: 'now',
+            lastConnectionError: null,
+            updatedAt: 'now',
+          }),
+      },
+      memcached: {
+        get,
+        getStats: vi.fn(async () => ok({ fetchedAt: new Date().toISOString(), stats: [] })),
+        set,
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+    await user.type(await screen.findByLabelText('Memcached key'), 'session:42');
+    fireEvent.change(screen.getByLabelText('Set value'), { target: { value: '{"ok":true}' } });
+    await user.click(screen.getByRole('button', { name: 'Set key' }));
+    await waitFor(() =>
+      expect(set).toHaveBeenCalledWith({ key: 'session:42', value: '{"ok":true}' }),
+    );
+    expect(await screen.findByText('Value stored (11 bytes).')).toBeInTheDocument();
   });
 });

@@ -7,6 +7,7 @@ import type {
   ConnectionStatus,
   InspectorDecodePipelineId,
   MemcachedGetResponse,
+  MemcachedSetResponse,
   MemcachedStatsGetResponse,
   RedisInspectDoneEvent,
   RedisInspectProgressEvent,
@@ -124,12 +125,55 @@ const readDecodePipelinePreference = (): InspectorDecodePipelineId => {
   }
 };
 
+const parseStreamEntries = (value: string) => {
+  const lines = value
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length === 0) {
+    return {
+      ok: false as const,
+      error: 'Add at least one stream field/value line using field=value format.',
+    };
+  }
+
+  const entries: Array<{ field: string; value: string }> = [];
+  for (const line of lines) {
+    const separator = line.indexOf('=');
+    if (separator <= 0) {
+      return {
+        ok: false as const,
+        error: `Invalid stream entry "${line}". Use field=value format.`,
+      };
+    }
+    const field = line.slice(0, separator).trim();
+    const entryValue = line.slice(separator + 1);
+    if (field.length === 0) {
+      return {
+        ok: false as const,
+        error: `Stream entry "${line}" is missing a field name.`,
+      };
+    }
+    entries.push({
+      field,
+      value: entryValue,
+    });
+  }
+
+  return {
+    ok: true as const,
+    entries,
+  };
+};
+
 type RedisExplorerPanelProps = {
   connectionStatus: ConnectionStatus;
 };
 
 type MemcachedGetData = Extract<MemcachedGetResponse, { ok: true }>['data'];
 type MemcachedStatsData = Extract<MemcachedStatsGetResponse, { ok: true }>['data'];
+type MemcachedSetData = Extract<MemcachedSetResponse, { ok: true }>['data'];
 
 export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps) => {
   const [query, setQuery] = useState('');
@@ -145,6 +189,18 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [inspectedKey, setInspectedKey] = useState<string | null>(null);
   const [inspectResult, setInspectResult] = useState<RedisInspectorResult | null>(null);
   const [inspectMessage, setInspectMessage] = useState<string | null>(null);
+  const [redisMutationMessage, setRedisMutationMessage] = useState<string | null>(null);
+  const [redisMutationPending, setRedisMutationPending] = useState(false);
+  const [stringMutationValue, setStringMutationValue] = useState('');
+  const [hashMutationField, setHashMutationField] = useState('');
+  const [hashMutationValue, setHashMutationValue] = useState('');
+  const [listMutationValue, setListMutationValue] = useState('');
+  const [listDirection, setListDirection] = useState<'left' | 'right'>('right');
+  const [setMutationMember, setSetMutationMember] = useState('');
+  const [zsetMutationMember, setZsetMutationMember] = useState('');
+  const [zsetMutationScore, setZsetMutationScore] = useState('');
+  const [streamMutationEntries, setStreamMutationEntries] = useState('');
+  const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
   const [copyConfirmRevealed, setCopyConfirmRevealed] = useState(false);
   const [preferredDecodePipelineId, setPreferredDecodePipelineId] = useState<InspectorDecodePipelineId>(
@@ -162,6 +218,9 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [memcachedResult, setMemcachedResult] = useState<MemcachedGetData | null>(null);
   const [memcachedStats, setMemcachedStats] = useState<MemcachedStatsData | null>(null);
   const [memcachedMessage, setMemcachedMessage] = useState<string | null>(null);
+  const [memcachedSetValue, setMemcachedSetValue] = useState('');
+  const [memcachedSetFlags, setMemcachedSetFlags] = useState('');
+  const [memcachedSetTtlSeconds, setMemcachedSetTtlSeconds] = useState('');
   const previousSafetyMode = useRef(connectionStatus.safetyMode);
   const stringPreviewValue = inspectResult?.type === 'string' ? inspectResult.value : null;
 
@@ -181,6 +240,7 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const api = window.api as unknown as Partial<typeof window.api>;
   const redisKeysApi = api.redisKeys;
   const redisInspectApi = api.redisInspect;
+  const redisMutationsApi = api.redisMutations;
   const memcachedApi = api.memcached;
   const jobsApi = api.jobs;
   const explorerApiAvailable =
@@ -193,9 +253,18 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     Boolean(redisInspectApi?.onProgress) &&
     Boolean(redisInspectApi?.onDone) &&
     Boolean(jobsApi?.cancel);
+  const redisMutationsApiAvailable =
+    Boolean(redisMutationsApi?.stringSet) &&
+    Boolean(redisMutationsApi?.hashSetField) &&
+    Boolean(redisMutationsApi?.listPush) &&
+    Boolean(redisMutationsApi?.setAdd) &&
+    Boolean(redisMutationsApi?.zsetAdd) &&
+    Boolean(redisMutationsApi?.streamAdd) &&
+    Boolean(redisMutationsApi?.keyDelete);
   const memcachedApiAvailable =
     Boolean(memcachedApi?.get) &&
     Boolean(memcachedApi?.getStats);
+  const memcachedSetAvailable = Boolean(memcachedApi?.set);
 
   useEffect(() => {
     if (!explorerApiAvailable || !redisKeysApi?.onSearchProgress || !redisKeysApi?.onSearchDone) {
@@ -250,6 +319,30 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
 
     previousSafetyMode.current = connectionStatus.safetyMode;
   }, [connectionStatus.safetyMode, connectionStatus.state, inspectResult?.reveal?.mode]);
+
+  useEffect(() => {
+    setDeleteConfirmPending(false);
+    setRedisMutationMessage(null);
+    if (!inspectResult) {
+      setStringMutationValue('');
+      setHashMutationField('');
+      setHashMutationValue('');
+      setListMutationValue('');
+      setSetMutationMember('');
+      setZsetMutationMember('');
+      setZsetMutationScore('');
+      setStreamMutationEntries('');
+      return;
+    }
+
+    if (inspectResult.type === 'string') {
+      setStringMutationValue(inspectResult.value);
+    }
+    if (inspectResult.type === 'hash') {
+      setHashMutationField(inspectResult.entries[0]?.field ?? '');
+      setHashMutationValue('');
+    }
+  }, [inspectResult?.key, inspectResult?.type]);
 
   useEffect(() => {
     if (inspectResult?.type !== 'string' || !inspectResult.view) {
@@ -379,6 +472,162 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     await jobsApi.cancel({ jobId: inspectJobId });
   };
 
+  const refreshInspectAfterMutation = () => {
+    if (!inspectedKey) {
+      return;
+    }
+    void startInspect(
+      inspectedKey,
+      'redacted',
+      decodePipelineToViewMode(preferredDecodePipelineId),
+      preferredDecodePipelineId,
+    );
+  };
+
+  const runRedisMutation = async (
+    action: () => Promise<{ ok: true; data: unknown } | { ok: false; error: { message: string } }>,
+    successMessage: string,
+  ) => {
+    setRedisMutationPending(true);
+    setRedisMutationMessage(null);
+    try {
+      const response = await action();
+      if ('error' in response) {
+        setRedisMutationMessage(response.error.message);
+        return;
+      }
+      setRedisMutationMessage(successMessage);
+      refreshInspectAfterMutation();
+    } finally {
+      setRedisMutationPending(false);
+    }
+  };
+
+  const mutateString = async () => {
+    if (!inspectResult || inspectResult.type !== 'string' || !redisMutationsApi?.stringSet) {
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.stringSet({
+          key: inspectResult.key,
+          value: stringMutationValue,
+        }),
+      'String value updated.',
+    );
+  };
+
+  const mutateHashField = async () => {
+    if (!inspectResult || inspectResult.type !== 'hash' || !redisMutationsApi?.hashSetField) {
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.hashSetField({
+          key: inspectResult.key,
+          field: hashMutationField,
+          value: hashMutationValue,
+        }),
+      'Hash field updated.',
+    );
+  };
+
+  const mutateListPush = async () => {
+    if (!inspectResult || inspectResult.type !== 'list' || !redisMutationsApi?.listPush) {
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.listPush({
+          key: inspectResult.key,
+          value: listMutationValue,
+          direction: listDirection,
+        }),
+      listDirection === 'left' ? 'List value prepended.' : 'List value appended.',
+    );
+  };
+
+  const mutateSetAdd = async () => {
+    if (!inspectResult || inspectResult.type !== 'set' || !redisMutationsApi?.setAdd) {
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.setAdd({
+          key: inspectResult.key,
+          member: setMutationMember,
+        }),
+      'Set member added (or already present).',
+    );
+  };
+
+  const mutateZSetAdd = async () => {
+    if (!inspectResult || inspectResult.type !== 'zset' || !redisMutationsApi?.zsetAdd) {
+      return;
+    }
+    const parsedScore = Number.parseFloat(zsetMutationScore);
+    if (!Number.isFinite(parsedScore)) {
+      setRedisMutationMessage('Provide a valid numeric score.');
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.zsetAdd({
+          key: inspectResult.key,
+          member: zsetMutationMember,
+          score: parsedScore,
+        }),
+      'Sorted set member written.',
+    );
+  };
+
+  const mutateStreamAdd = async () => {
+    if (!inspectResult || inspectResult.type !== 'stream' || !redisMutationsApi?.streamAdd) {
+      return;
+    }
+    const parsed = parseStreamEntries(streamMutationEntries);
+    if (!parsed.ok) {
+      setRedisMutationMessage(parsed.error);
+      return;
+    }
+    await runRedisMutation(
+      () =>
+        redisMutationsApi.streamAdd({
+          key: inspectResult.key,
+          entries: parsed.entries,
+        }),
+      'Stream entry added.',
+    );
+  };
+
+  const deleteRedisKey = async () => {
+    if (!inspectedKey || !redisMutationsApi?.keyDelete) {
+      return;
+    }
+    const keyToDelete = inspectedKey;
+    setRedisMutationPending(true);
+    setRedisMutationMessage(null);
+    try {
+      const response = await redisMutationsApi.keyDelete({
+        key: keyToDelete,
+      });
+      if ('error' in response) {
+        setRedisMutationMessage(response.error.message);
+        return;
+      }
+      if (response.data.deleted) {
+        setKeys((previous) => previous.filter((item) => item.key !== keyToDelete));
+      }
+      setRedisMutationMessage(
+        response.data.deleted ? 'Key deleted.' : 'Key was not found; nothing deleted.',
+      );
+      refreshInspectAfterMutation();
+      setDeleteConfirmPending(false);
+    } finally {
+      setRedisMutationPending(false);
+    }
+  };
+
   const copyInspectedValue = async (copyMode: 'safeRedacted' | 'explicitRevealed') => {
     if (!inspectResult || !redisInspectApi?.copy) {
       return;
@@ -435,12 +684,79 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     setMemcachedLoading(false);
   };
 
+  const setMemcachedByKey = async () => {
+    if (!memcachedSetAvailable || !memcachedApi?.set || memcachedKey.trim().length === 0) {
+      return;
+    }
+
+    const nextFlags = memcachedSetFlags.trim();
+    const nextTtl = memcachedSetTtlSeconds.trim();
+    const parsedFlags = nextFlags.length > 0 ? Number.parseInt(nextFlags, 10) : undefined;
+    const parsedTtl = nextTtl.length > 0 ? Number.parseInt(nextTtl, 10) : undefined;
+    if ((nextFlags.length > 0 && !Number.isInteger(parsedFlags)) || (parsedFlags ?? 0) < 0) {
+      setMemcachedMessage('Flags must be a non-negative integer.');
+      return;
+    }
+    if ((nextTtl.length > 0 && !Number.isInteger(parsedTtl)) || (parsedTtl ?? 0) < 0) {
+      setMemcachedMessage('TTL seconds must be a non-negative integer.');
+      return;
+    }
+
+    setMemcachedLoading(true);
+    setMemcachedMessage(null);
+    const response = await memcachedApi.set({
+      key: memcachedKey.trim(),
+      value: memcachedSetValue,
+      ...(parsedFlags !== undefined ? { flags: parsedFlags } : {}),
+      ...(parsedTtl !== undefined ? { ttlSeconds: parsedTtl } : {}),
+    });
+
+    if ('error' in response) {
+      setMemcachedMessage(response.error.message);
+      setMemcachedLoading(false);
+      return;
+    }
+
+    const data = response.data as MemcachedSetData;
+    setMemcachedMessage(
+      data.stored
+        ? `Value stored (${data.bytes} bytes).`
+        : 'Memcached did not store this value.',
+    );
+    if (memcachedApi?.get) {
+      const refetch = await memcachedApi.get({ key: memcachedKey.trim() });
+      if ('data' in refetch) {
+        setMemcachedResult(refetch.data);
+      }
+    }
+    setMemcachedLoading(false);
+  };
+
   const revealMode = inspectResult?.reveal?.mode ?? 'redacted';
   const revealModeForViewChange = revealMode === 'revealed' ? 'redacted' : revealMode;
   const activeViewMode = inspectResult?.view?.activeMode ?? 'raw';
   const requestedDecodePipelineId =
     inspectResult?.decode?.requestedPipelineId ?? preferredDecodePipelineId;
   const canReveal = inspectResult?.reveal?.canReveal ?? false;
+  const redisMutationUnlocked = connectionStatus.safetyMode === 'unlocked';
+  const redisMutationBlockedReason =
+    connectionStatus.safetyReason ??
+    'Mutations are blocked while in read-only mode. Unlock mutations to continue.';
+  const redisMutationControlsDisabled =
+    !redisMutationsApiAvailable ||
+    !inspectResult ||
+    Boolean(inspectJobId) ||
+    redisMutationPending ||
+    connectionStatus.state !== 'connected' ||
+    connectionStatus.activeKind !== 'redis' ||
+    !redisMutationUnlocked;
+  const memcachedSetControlsDisabled =
+    !canUseMemcached ||
+    !memcachedSetAvailable ||
+    memcachedLoading ||
+    memcachedKey.trim().length === 0 ||
+    memcachedSetValue.length === 0 ||
+    connectionStatus.safetyMode !== 'unlocked';
 
   return (
     <section className='grid gap-4 rounded-xl border border-border bg-card p-4'>
@@ -815,6 +1131,230 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
               <p className='mb-2 text-xs text-emerald-700'>{copyMessage}</p>
             ) : null}
             {inspectResult ? (
+              <div className='mb-3 grid gap-2 rounded border border-border/70 bg-muted/30 p-3' data-testid='redis-mutation-panel'>
+                <p className='text-xs uppercase tracking-[0.12em] text-muted-foreground'>
+                  Mutation controls
+                </p>
+                {!redisMutationUnlocked ? (
+                  <p className='text-xs text-amber-700' role='alert'>
+                    Mutations blocked: {redisMutationBlockedReason}
+                  </p>
+                ) : (
+                  <p className='text-xs text-emerald-700'>
+                    Mutations unlocked. Changes apply immediately.
+                  </p>
+                )}
+                {redisMutationMessage ? (
+                  <p className='text-xs text-muted-foreground'>{redisMutationMessage}</p>
+                ) : null}
+
+                {inspectResult.type === 'string' ? (
+                  <div className='grid gap-2 md:grid-cols-[1fr_auto] md:items-end'>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-string-mutation-value'>Set string value</Label>
+                      <Input
+                        id='redis-string-mutation-value'
+                        value={stringMutationValue}
+                        onChange={(event) => setStringMutationValue(event.target.value)}
+                        placeholder='New string value'
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        void mutateString();
+                      }}
+                      disabled={redisMutationControlsDisabled}
+                    >
+                      Set string value
+                    </Button>
+                  </div>
+                ) : null}
+
+                {inspectResult.type === 'hash' ? (
+                  <div className='grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end'>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-hash-mutation-field'>Hash field</Label>
+                      <Input
+                        id='redis-hash-mutation-field'
+                        value={hashMutationField}
+                        onChange={(event) => setHashMutationField(event.target.value)}
+                        placeholder='field'
+                      />
+                    </div>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-hash-mutation-value'>Field value</Label>
+                      <Input
+                        id='redis-hash-mutation-value'
+                        value={hashMutationValue}
+                        onChange={(event) => setHashMutationValue(event.target.value)}
+                        placeholder='value'
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        void mutateHashField();
+                      }}
+                      disabled={redisMutationControlsDisabled || hashMutationField.trim().length === 0}
+                    >
+                      Set hash field
+                    </Button>
+                  </div>
+                ) : null}
+
+                {inspectResult.type === 'list' ? (
+                  <div className='grid gap-2 md:grid-cols-[1fr_auto_auto] md:items-end'>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-list-mutation-value'>List value</Label>
+                      <Input
+                        id='redis-list-mutation-value'
+                        value={listMutationValue}
+                        onChange={(event) => setListMutationValue(event.target.value)}
+                        placeholder='value'
+                      />
+                    </div>
+                    <Button
+                      variant={listDirection === 'left' ? 'secondary' : 'outline'}
+                      onClick={() => setListDirection('left')}
+                      disabled={redisMutationControlsDisabled}
+                    >
+                      Direction: left
+                    </Button>
+                    <Button
+                      variant={listDirection === 'right' ? 'secondary' : 'outline'}
+                      onClick={() => setListDirection('right')}
+                      disabled={redisMutationControlsDisabled}
+                    >
+                      Direction: right
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        void mutateListPush();
+                      }}
+                      disabled={redisMutationControlsDisabled}
+                    >
+                      Push list value
+                    </Button>
+                  </div>
+                ) : null}
+
+                {inspectResult.type === 'set' ? (
+                  <div className='grid gap-2 md:grid-cols-[1fr_auto] md:items-end'>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-set-mutation-member'>Set member</Label>
+                      <Input
+                        id='redis-set-mutation-member'
+                        value={setMutationMember}
+                        onChange={(event) => setSetMutationMember(event.target.value)}
+                        placeholder='member'
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        void mutateSetAdd();
+                      }}
+                      disabled={redisMutationControlsDisabled || setMutationMember.trim().length === 0}
+                    >
+                      Add set member
+                    </Button>
+                  </div>
+                ) : null}
+
+                {inspectResult.type === 'zset' ? (
+                  <div className='grid gap-2 md:grid-cols-[1fr_1fr_auto] md:items-end'>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-zset-mutation-member'>ZSet member</Label>
+                      <Input
+                        id='redis-zset-mutation-member'
+                        value={zsetMutationMember}
+                        onChange={(event) => setZsetMutationMember(event.target.value)}
+                        placeholder='member'
+                      />
+                    </div>
+                    <div className='grid gap-1'>
+                      <Label htmlFor='redis-zset-mutation-score'>Score</Label>
+                      <Input
+                        id='redis-zset-mutation-score'
+                        value={zsetMutationScore}
+                        onChange={(event) => setZsetMutationScore(event.target.value)}
+                        placeholder='1.5'
+                      />
+                    </div>
+                    <Button
+                      onClick={() => {
+                        void mutateZSetAdd();
+                      }}
+                      disabled={redisMutationControlsDisabled || zsetMutationMember.trim().length === 0}
+                    >
+                      Add zset member
+                    </Button>
+                  </div>
+                ) : null}
+
+                {inspectResult.type === 'stream' ? (
+                  <div className='grid gap-2'>
+                    <Label htmlFor='redis-stream-mutation-entries'>Stream entries (field=value per line)</Label>
+                    <textarea
+                      id='redis-stream-mutation-entries'
+                      className='min-h-20 rounded border border-border bg-background px-3 py-2 text-xs'
+                      value={streamMutationEntries}
+                      onChange={(event) => setStreamMutationEntries(event.target.value)}
+                      placeholder={'event=created\nid=42'}
+                    />
+                    <div className='flex justify-end'>
+                      <Button
+                        onClick={() => {
+                          void mutateStreamAdd();
+                        }}
+                        disabled={redisMutationControlsDisabled}
+                      >
+                        Add stream entry
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+
+                {inspectResult.type !== 'none' ? (
+                  <div className='grid gap-2 rounded border border-destructive/30 bg-destructive/5 p-2'>
+                    {!deleteConfirmPending ? (
+                      <div className='flex items-center justify-between gap-2'>
+                        <span className='text-xs text-muted-foreground'>
+                          High impact: deleting this key is irreversible.
+                        </span>
+                        <Button
+                          variant='destructive'
+                          onClick={() => setDeleteConfirmPending(true)}
+                          disabled={redisMutationControlsDisabled}
+                        >
+                          Delete key
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className='flex flex-wrap items-center gap-2'>
+                        <span className='text-xs text-destructive'>
+                          Confirm delete for <code>{inspectResult.key}</code>
+                        </span>
+                        <Button
+                          variant='destructive'
+                          onClick={() => {
+                            void deleteRedisKey();
+                          }}
+                          disabled={redisMutationControlsDisabled}
+                        >
+                          Confirm delete
+                        </Button>
+                        <Button
+                          variant='outline'
+                          onClick={() => setDeleteConfirmPending(false)}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            {inspectResult ? (
               <p className='mb-2 text-xs text-muted-foreground'>
                 {inspectResult.redaction.redactionApplied
                   ? `Redacted ${inspectResult.redaction.redactedSegments} sensitive segment(s).`
@@ -1079,12 +1619,55 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                 Refresh stats
               </Button>
             </div>
+            <div className='grid gap-3 md:grid-cols-[1.5fr_0.6fr_0.6fr_auto] md:items-end'>
+              <div className='grid gap-2'>
+                <Label htmlFor='memcached-set-value'>Set value</Label>
+                <Input
+                  id='memcached-set-value'
+                  value={memcachedSetValue}
+                  onChange={(event) => setMemcachedSetValue(event.target.value)}
+                  placeholder='updated value'
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='memcached-set-flags'>Flags</Label>
+                <Input
+                  id='memcached-set-flags'
+                  value={memcachedSetFlags}
+                  onChange={(event) => setMemcachedSetFlags(event.target.value)}
+                  placeholder='0'
+                />
+              </div>
+              <div className='grid gap-2'>
+                <Label htmlFor='memcached-set-ttl'>TTL sec</Label>
+                <Input
+                  id='memcached-set-ttl'
+                  value={memcachedSetTtlSeconds}
+                  onChange={(event) => setMemcachedSetTtlSeconds(event.target.value)}
+                  placeholder='0'
+                />
+              </div>
+              <Button
+                variant='secondary'
+                onClick={() => {
+                  void setMemcachedByKey();
+                }}
+                disabled={memcachedSetControlsDisabled}
+              >
+                Set key
+              </Button>
+            </div>
 
             <p className='text-xs text-muted-foreground'>
               {canUseMemcached
                 ? 'Connected to Memcached.'
                 : 'Connect an active Memcached profile to fetch values and stats.'}
             </p>
+            {connectionStatus.safetyMode !== 'unlocked' && canUseMemcached ? (
+              <p className='text-xs text-amber-700' role='alert'>
+                Memcached writes are blocked: {connectionStatus.safetyReason ?? 'Unlock mutations to continue.'}
+              </p>
+            ) : null}
 
             {memcachedMessage ? (
               <p className='text-xs text-muted-foreground'>{memcachedMessage}</p>
