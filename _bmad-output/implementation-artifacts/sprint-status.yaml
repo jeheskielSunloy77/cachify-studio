@@ -65,14 +65,14 @@ development_status:
   3-4-raw-vs-formatted-views: done
   3-5-decode-pipeline-selection-and-visibility: done
   3-6-copy-in-redacted-safe-form: done
-  epic-3-retrospective: optional
-  epic-4: backlog
-  4-1-enforce-mutation-blocking-by-default-read-only-posture: backlog
-  4-2-redis-mutations-for-strings-and-hashes-when-unlocked: backlog
-  4-3-redis-mutations-for-lists-sets-zsets-and-streams-when-unlocked: backlog
-  4-4-redis-key-deletion-when-unlocked: backlog
-  4-5-memcached-set-by-key-when-unlocked: backlog
-  epic-4-retrospective: optional
+  epic-3-retrospective: done
+  epic-4: done
+  4-1-enforce-mutation-blocking-by-default-read-only-posture: done
+  4-2-redis-mutations-for-strings-and-hashes-when-unlocked: done
+  4-3-redis-mutations-for-lists-sets-zsets-and-streams-when-unlocked: done
+  4-4-redis-key-deletion-when-unlocked: done
+  4-5-memcached-set-by-key-when-unlocked: done
+  epic-4-retrospective: done
   epic-5: backlog
   5-1-save-and-recall-searches-scoped: backlog
   5-2-recent-keys-and-investigation-history-session: backlog
