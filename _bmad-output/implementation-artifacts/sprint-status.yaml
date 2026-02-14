@@ -73,14 +73,14 @@ development_status:
   4-4-redis-key-deletion-when-unlocked: done
   4-5-memcached-set-by-key-when-unlocked: done
   epic-4-retrospective: done
-  epic-5: backlog
-  5-1-save-and-recall-searches-scoped: backlog
-  5-2-recent-keys-and-investigation-history-session: backlog
-  5-3-export-minimal-markdown-bundle-redacted-by-default: backlog
-  5-4-copy-pretty-snippet-for-sharing-safe-context: backlog
+  epic-5: done
+  5-1-save-and-recall-searches-scoped: done
+  5-2-recent-keys-and-investigation-history-session: done
+  5-3-export-minimal-markdown-bundle-redacted-by-default: done
+  5-4-copy-pretty-snippet-for-sharing-safe-context: done
   epic-5-retrospective: optional
-  epic-6: backlog
-  6-1-tray-menu-quick-actions-with-safety-indicator: backlog
+  epic-6: in-progress
+  6-1-tray-menu-quick-actions-with-safety-indicator: ready-for-dev
   6-2-global-shortcut-to-focus-search: backlog
   6-3-local-preferences-storage: backlog
   6-4-do-not-persist-fetched-cache-values-by-default: backlog
