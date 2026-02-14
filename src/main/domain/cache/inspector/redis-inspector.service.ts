@@ -1242,6 +1242,9 @@ export const runRedisInspectJob = async ({
 };
 
 type RedisInspectCopyMode = RedisInspectCopyRequest['copyMode'];
+type RedisInspectCopyContext = {
+	environmentLabel?: string | null;
+};
 
 const normalizeTtlLabel = (ttlSeconds: number | null) => {
   if (ttlSeconds === -1) {
@@ -1299,13 +1302,42 @@ const buildCopyRepresentation = (
   return result.reason;
 };
 
+const buildPrettySnippetText = ({
+	result,
+	copyValue,
+	environmentLabel,
+}: {
+	result: RedisInspectorResult;
+	copyValue: string;
+	environmentLabel: string | null;
+}) => {
+	const decodeLabel = result.decode?.activePipelineLabel ?? 'Raw text';
+	const viewMode = result.view?.activeMode ?? 'raw';
+	return [
+		'### Cachify Safe Snippet',
+		`- Environment: ${environmentLabel ?? 'none'}`,
+		`- Key: ${result.key}`,
+		`- Type: ${result.type}`,
+		`- TTL: ${normalizeTtlLabel(result.ttlSeconds)}`,
+		`- Decode: ${decodeLabel}`,
+		`- View: ${viewMode}`,
+		`- Redaction: ${result.redaction.policyId}@${result.redaction.policyVersion} (${result.redaction.redactionApplied ? 'applied' : 'no matches'}, segments: ${result.redaction.redactedSegments})`,
+		'',
+		'```text',
+		copyValue,
+		'```',
+	].join('\n');
+};
+
 export const buildRedisInspectCopyPayload = (
   result: RedisInspectorResult,
   copyMode: RedisInspectCopyMode,
+  context: RedisInspectCopyContext = {},
 ) => {
   let redactionApplied = false;
+  const useRedactedCopy = copyMode !== 'explicitRevealed';
   const redactForCopy = (value: string) => {
-    if (copyMode !== 'safeRedacted') {
+    if (!useRedactedCopy) {
       return value;
     }
     const redacted = redactPreviewText(value);
@@ -1314,19 +1346,23 @@ export const buildRedisInspectCopyPayload = (
   };
 
   const copyValue = buildCopyRepresentation(result, redactForCopy);
-  const decodeLabel = result.decode?.activePipelineLabel ?? 'Raw text';
-  const viewMode = result.view?.activeMode ?? 'raw';
-  const text = [
-    `Key: ${result.key}`,
-    `Type: ${result.type}`,
-    `TTL: ${normalizeTtlLabel(result.ttlSeconds)}`,
-    `Decode: ${decodeLabel}`,
-    `View: ${viewMode}`,
-    `Copy mode: ${copyMode}`,
-    '',
-    'Value:',
-    copyValue,
-  ].join('\n');
+  const text = copyMode === 'prettySnippet'
+		? buildPrettySnippetText({
+				result,
+				copyValue,
+				environmentLabel: context.environmentLabel ?? null,
+			})
+		: [
+				`Key: ${result.key}`,
+				`Type: ${result.type}`,
+				`TTL: ${normalizeTtlLabel(result.ttlSeconds)}`,
+				`Decode: ${result.decode?.activePipelineLabel ?? 'Raw text'}`,
+				`View: ${result.view?.activeMode ?? 'raw'}`,
+				`Copy mode: ${copyMode}`,
+				'',
+				'Value:',
+				copyValue,
+			].join('\n');
 
   return {
     text,

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { BrowserWindow, clipboard, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import {
 	appPingChannel,
@@ -19,6 +20,9 @@ import {
 	jobsCancelChannel,
 	jobsCancelRequestSchema,
 	jobsCancelResponseSchema,
+	exportsMarkdownCreateChannel,
+	exportsMarkdownCreateRequestSchema,
+	exportsMarkdownCreateResponseSchema,
 	memcachedGetChannel,
 	memcachedGetRequestSchema,
 	memcachedGetResponseSchema,
@@ -67,6 +71,18 @@ import {
 	profilesUpdateChannel,
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
+	savedSearchesCreateChannel,
+	savedSearchesCreateRequestSchema,
+	savedSearchesCreateResponseSchema,
+	savedSearchesDeleteChannel,
+	savedSearchesDeleteRequestSchema,
+	savedSearchesDeleteResponseSchema,
+	savedSearchesGetChannel,
+	savedSearchesGetRequestSchema,
+	savedSearchesGetResponseSchema,
+	savedSearchesListChannel,
+	savedSearchesListRequestSchema,
+	savedSearchesListResponseSchema,
 	redisHashSetFieldChannel,
 	redisHashSetFieldRequestSchema,
 	redisHashSetFieldResponseSchema,
@@ -93,6 +109,12 @@ import {
 	redisKeysSearchStartChannel,
 	redisKeysSearchStartRequestSchema,
 	redisKeysSearchStartResponseSchema,
+	recentKeysListChannel,
+	recentKeysListRequestSchema,
+	recentKeysListResponseSchema,
+	recentKeysReopenChannel,
+	recentKeysReopenRequestSchema,
+	recentKeysReopenResponseSchema,
 	redisSetAddChannel,
 	redisSetAddRequestSchema,
 	redisSetAddResponseSchema,
@@ -111,6 +133,7 @@ import {
 	type ConnectionsStatusGetResponse,
 	type ConnectionsSwitchResponse,
 	type JobsCancelResponse,
+	type ExportsMarkdownCreateResponse,
 	type MemcachedGetResponse,
 	type MemcachedSetResponse,
 	type MemcachedStatsGetResponse,
@@ -127,6 +150,12 @@ import {
 	type ProfilesSetTagsResponse,
 	type ProfilesToggleFavoriteResponse,
 	type ProfilesUpdateResponse,
+	type RecentKeysListResponse,
+	type RecentKeysReopenResponse,
+	type SavedSearchesCreateResponse,
+	type SavedSearchesDeleteResponse,
+	type SavedSearchesGetResponse,
+	type SavedSearchesListResponse,
 	type RedisHashSetFieldResponse,
 	type RedisInspectStartResponse,
 	type RedisInspectCopyResponse,
@@ -149,8 +178,12 @@ import {
 	runRedisInspectJob,
 } from '../domain/cache/inspector/redis-inspector.service'
 import { connectionSessionService } from '../domain/cache/session/connection-session.service'
-import { getPersistenceStatus } from '../domain/persistence/db/connection'
+import { recentKeysSessionService } from '../domain/cache/session/recent-keys-session.service'
+import { createMarkdownBundle } from '../domain/exports/markdown-bundle.service'
+import { getDatabase, getPersistenceStatus } from '../domain/persistence/db/connection'
+import { createExportArtifact } from '../domain/persistence/repositories/exports-index.repository'
 import { profilesService } from '../domain/persistence/services/connection-profiles.service'
+import { savedSearchesService } from '../domain/persistence/services/saved-searches.service'
 import { profileSecrets } from '../domain/security/secrets'
 
 const normalizeDetails = (value: unknown): unknown => {
@@ -537,6 +570,143 @@ const handleProfilesSetTags = async (
 	}
 }
 
+const handleSavedSearchesList = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<SavedSearchesListResponse> => {
+	const parsed = savedSearchesListRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for savedSearches:list',
+			parsed.error.flatten(),
+		) as SavedSearchesListResponse
+	}
+	if (!ensurePersistenceReady()) {
+		return persistenceUnavailableEnvelope() as SavedSearchesListResponse
+	}
+
+	try {
+		const data = await savedSearchesService.list()
+		return ensureResponseEnvelope(
+			savedSearchesListResponseSchema,
+			{ ok: true, data },
+			'Invalid savedSearches:list response envelope',
+		)
+	} catch (error) {
+		return queryFailureEnvelope('savedSearches:list failed', error) as SavedSearchesListResponse
+	}
+}
+
+const handleSavedSearchesCreate = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<SavedSearchesCreateResponse> => {
+	const parsed = savedSearchesCreateRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for savedSearches:create',
+			parsed.error.flatten(),
+		) as SavedSearchesCreateResponse
+	}
+	if (!ensurePersistenceReady()) {
+		return persistenceUnavailableEnvelope() as SavedSearchesCreateResponse
+	}
+
+	try {
+		const result = await savedSearchesService.create(parsed.data.search)
+		if (!result.ok) {
+			return errorEnvelope(
+				'VALIDATION_ERROR',
+				'Invalid saved search data',
+				result.error.flatten(),
+			) as SavedSearchesCreateResponse
+		}
+		if (!result.data) {
+			return errorEnvelope(
+				'SAVED_SEARCH_CREATE_FAILED',
+				'Saved search could not be created',
+			) as SavedSearchesCreateResponse
+		}
+		return ensureResponseEnvelope(
+			savedSearchesCreateResponseSchema,
+			{ ok: true, data: result.data },
+			'Invalid savedSearches:create response envelope',
+		)
+	} catch (error) {
+		return queryFailureEnvelope('savedSearches:create failed', error) as SavedSearchesCreateResponse
+	}
+}
+
+const handleSavedSearchesGet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<SavedSearchesGetResponse> => {
+	const parsed = savedSearchesGetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for savedSearches:get',
+			parsed.error.flatten(),
+		) as SavedSearchesGetResponse
+	}
+	if (!ensurePersistenceReady()) {
+		return persistenceUnavailableEnvelope() as SavedSearchesGetResponse
+	}
+
+	try {
+		const data = await savedSearchesService.getById(parsed.data.id)
+		if (!data) {
+			return errorEnvelope(
+				'NOT_FOUND',
+				'Saved search not found',
+			) as SavedSearchesGetResponse
+		}
+		return ensureResponseEnvelope(
+			savedSearchesGetResponseSchema,
+			{ ok: true, data },
+			'Invalid savedSearches:get response envelope',
+		)
+	} catch (error) {
+		return queryFailureEnvelope('savedSearches:get failed', error) as SavedSearchesGetResponse
+	}
+}
+
+const handleSavedSearchesDelete = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<SavedSearchesDeleteResponse> => {
+	const parsed = savedSearchesDeleteRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for savedSearches:delete',
+			parsed.error.flatten(),
+		) as SavedSearchesDeleteResponse
+	}
+	if (!ensurePersistenceReady()) {
+		return persistenceUnavailableEnvelope() as SavedSearchesDeleteResponse
+	}
+
+	try {
+		const result = await savedSearchesService.delete(parsed.data.id)
+		if (!result.ok) {
+			return errorEnvelope(
+				result.error.code,
+				result.error.message,
+			) as SavedSearchesDeleteResponse
+		}
+		return ensureResponseEnvelope(
+			savedSearchesDeleteResponseSchema,
+			{ ok: true, data: result.data },
+			'Invalid savedSearches:delete response envelope',
+		)
+	} catch (error) {
+		return queryFailureEnvelope('savedSearches:delete failed', error) as SavedSearchesDeleteResponse
+	}
+}
+
 const handleProfileSecretsStorageStatus = async (
 	_event: IpcMainInvokeEvent,
 	payload: unknown,
@@ -837,6 +1007,87 @@ const handleRedisKeysSearchStart = async (
 	)
 }
 
+const handleRecentKeysList = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RecentKeysListResponse> => {
+	const parsed = recentKeysListRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for recentKeys:list',
+			parsed.error.flatten(),
+		) as RecentKeysListResponse
+	}
+
+	const status = connectionSessionService.getStatus()
+	if (
+		status.state !== 'connected' ||
+		status.activeKind !== 'redis' ||
+		!status.activeProfileId
+	) {
+		return errorEnvelope(
+			'NOT_CONNECTED',
+			'Connect to Redis before viewing recent keys.',
+		) as RecentKeysListResponse
+	}
+
+	return ensureResponseEnvelope(
+		recentKeysListResponseSchema,
+		{
+			ok: true,
+			data: recentKeysSessionService.list(status.activeProfileId),
+		},
+		'Invalid recentKeys:list response envelope',
+	)
+}
+
+const handleRecentKeysReopen = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<RecentKeysReopenResponse> => {
+	const parsed = recentKeysReopenRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for recentKeys:reopen',
+			parsed.error.flatten(),
+		) as RecentKeysReopenResponse
+	}
+
+	const status = connectionSessionService.getStatus()
+	if (
+		status.state !== 'connected' ||
+		status.activeKind !== 'redis' ||
+		!status.activeProfileId
+	) {
+		return errorEnvelope(
+			'NOT_CONNECTED',
+			'Connect to Redis before reopening recent keys.',
+		) as RecentKeysReopenResponse
+	}
+
+	const reopened = recentKeysSessionService.reopen(
+		status.activeProfileId,
+		parsed.data.key,
+	)
+	if (!reopened) {
+		return errorEnvelope(
+			'NOT_FOUND',
+			'Recent key not found',
+		) as RecentKeysReopenResponse
+	}
+
+	return ensureResponseEnvelope(
+		recentKeysReopenResponseSchema,
+		{
+			ok: true,
+			data: reopened,
+		},
+		'Invalid recentKeys:reopen response envelope',
+	)
+}
+
 const handleJobsCancel = async (
 	_event: IpcMainInvokeEvent,
 	payload: unknown,
@@ -888,6 +1139,13 @@ const handleRedisInspectStart = async (
 			'Connect to Redis before inspecting keys.',
 		) as RedisInspectStartResponse
 	}
+	if (!status.activeProfileId) {
+		return errorEnvelope(
+			'NOT_CONNECTED',
+			'Connect to Redis before inspecting keys.',
+		) as RedisInspectStartResponse
+	}
+	const activeProfileId = status.activeProfileId
 
 	const jobId = buildJobId()
 	const startedAt = new Date().toISOString()
@@ -906,12 +1164,19 @@ const handleRedisInspectStart = async (
 				}
 			}
 		},
-		onDone: (done) => {
-			if (!event.sender.isDestroyed()) {
-				const validated = redisInspectDoneEventSchema.safeParse(done)
-				if (validated.success) {
-					event.sender.send(redisInspectDoneEventChannel, validated.data)
+			onDone: (done) => {
+				if (done.status === 'completed' && done.result) {
+					recentKeysSessionService.record(activeProfileId, {
+						key: done.result.key,
+						type: done.result.type,
+						ttlSeconds: done.result.ttlSeconds,
+					})
 				}
+				if (!event.sender.isDestroyed()) {
+					const validated = redisInspectDoneEventSchema.safeParse(done)
+					if (validated.success) {
+						event.sender.send(redisInspectDoneEventChannel, validated.data)
+					}
 			}
 			activeJobs.delete(jobId)
 		},
@@ -943,11 +1208,23 @@ const handleRedisInspectCopy = async (
 		) as RedisInspectCopyResponse
 	}
 
+	const status = connectionSessionService.getStatus()
 	const copyPayload = buildRedisInspectCopyPayload(
 		parsed.data.result,
 		parsed.data.copyMode,
+		{
+			environmentLabel: parsed.data.environmentLabel ?? status.environmentLabel,
+		},
 	)
-	clipboard.writeText(copyPayload.text)
+	try {
+		clipboard.writeText(copyPayload.text)
+	} catch (error) {
+		return errorEnvelope(
+			'CLIPBOARD_WRITE_FAILED',
+			'Failed to copy snippet to clipboard. Try again.',
+			normalizeDetails(error),
+		) as RedisInspectCopyResponse
+	}
 
 	return ensureResponseEnvelope(
 		redisInspectCopyResponseSchema,
@@ -961,6 +1238,74 @@ const handleRedisInspectCopy = async (
 		},
 		'Invalid redisInspect:copy response envelope',
 	)
+}
+
+const handleExportsMarkdownCreate = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<ExportsMarkdownCreateResponse> => {
+	const parsed = exportsMarkdownCreateRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for exports:markdown:create',
+			parsed.error.flatten(),
+		) as ExportsMarkdownCreateResponse
+	}
+	if (!ensurePersistenceReady()) {
+		return persistenceUnavailableEnvelope() as ExportsMarkdownCreateResponse
+	}
+
+	const status = connectionSessionService.getStatus()
+	const bundle = createMarkdownBundle({
+		result: parsed.data.result,
+		environmentLabel: parsed.data.environmentLabel ?? status.environmentLabel,
+	})
+	if (!bundle.ok) {
+		return errorEnvelope(
+			bundle.error.code,
+			bundle.error.message,
+			bundle.error.details,
+		) as ExportsMarkdownCreateResponse
+	}
+
+	try {
+		const artifactId = randomUUID()
+		const indexed = createExportArtifact(getDatabase(), {
+			id: artifactId,
+			filePath: bundle.data.filePath,
+			createdAt: bundle.data.createdAt,
+			profileId: status.activeKind === 'redis' ? status.activeProfileId : null,
+			key: bundle.data.key,
+			redactionPolicy: bundle.data.redactionPolicy,
+			redactionPolicyVersion: bundle.data.redactionPolicyVersion,
+			previewMode: bundle.data.previewMode,
+		})
+		if (!indexed) {
+			return errorEnvelope(
+				'EXPORT_INDEX_WRITE_FAILED',
+				'Markdown bundle was written but index metadata could not be saved.',
+			) as ExportsMarkdownCreateResponse
+		}
+		return ensureResponseEnvelope(
+			exportsMarkdownCreateResponseSchema,
+			{
+				ok: true,
+				data: {
+					id: indexed.id,
+					filePath: indexed.filePath,
+					fileName: bundle.data.fileName,
+					createdAt: indexed.createdAt,
+					key: indexed.key,
+					profileId: indexed.profileId,
+					previewMode: indexed.previewMode,
+				},
+			},
+			'Invalid exports:markdown:create response envelope',
+		)
+	} catch (error) {
+		return queryFailureEnvelope('exports:markdown:create failed', error) as ExportsMarkdownCreateResponse
+	}
 }
 
 const handleRedisStringSet = async (
@@ -1312,6 +1657,10 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(profilesDeleteChannel, handleProfilesDelete)
 	ipcMain.handle(profilesToggleFavoriteChannel, handleProfilesToggleFavorite)
 	ipcMain.handle(profilesSetTagsChannel, handleProfilesSetTags)
+	ipcMain.handle(savedSearchesListChannel, handleSavedSearchesList)
+	ipcMain.handle(savedSearchesCreateChannel, handleSavedSearchesCreate)
+	ipcMain.handle(savedSearchesGetChannel, handleSavedSearchesGet)
+	ipcMain.handle(savedSearchesDeleteChannel, handleSavedSearchesDelete)
 	ipcMain.handle(profileSecretsStorageStatusChannel, handleProfileSecretsStorageStatus)
 	ipcMain.handle(profileSecretsSaveChannel, handleProfileSecretsSave)
 	ipcMain.handle(profileSecretsLoadChannel, handleProfileSecretsLoad)
@@ -1323,9 +1672,12 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(mutationsUnlockChannel, handleMutationsUnlock)
 	ipcMain.handle(mutationsRelockChannel, handleMutationsRelock)
 	ipcMain.handle(redisKeysSearchStartChannel, handleRedisKeysSearchStart)
+	ipcMain.handle(recentKeysListChannel, handleRecentKeysList)
+	ipcMain.handle(recentKeysReopenChannel, handleRecentKeysReopen)
 	ipcMain.handle(jobsCancelChannel, handleJobsCancel)
 	ipcMain.handle(redisInspectStartChannel, handleRedisInspectStart)
 	ipcMain.handle(redisInspectCopyChannel, handleRedisInspectCopy)
+	ipcMain.handle(exportsMarkdownCreateChannel, handleExportsMarkdownCreate)
 	ipcMain.handle(redisStringSetChannel, handleRedisStringSet)
 	ipcMain.handle(redisHashSetFieldChannel, handleRedisHashSetField)
 	ipcMain.handle(redisListPushChannel, handleRedisListPush)

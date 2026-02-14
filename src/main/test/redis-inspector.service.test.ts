@@ -817,6 +817,68 @@ describe('redis inspector service', () => {
     expect(payload.text).not.toContain('visibleSecret123');
   });
 
+  it('builds pretty snippet copy payload with safe context and redacted preview', () => {
+    const payload = buildRedisInspectCopyPayload(
+      {
+        key: 'copy:key',
+        type: 'string',
+        ttlSeconds: 30,
+        isPartial: false,
+        capReached: false,
+        previewBytes: 24,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary:
+            'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 1,
+          redactionApplied: true,
+        },
+        reveal: {
+          mode: 'revealed',
+          canReveal: true,
+          explicitInteractionRequired: true,
+          autoResetTriggers: ['key-change', 'view-switch', 'navigation', 'disconnect', 'safety-relock'],
+        },
+        view: {
+          requestedMode: 'raw',
+          activeMode: 'raw',
+          rawAvailable: true,
+          formattedAvailable: false,
+        },
+        decode: {
+          requestedPipelineId: 'raw-text',
+          activePipelineId: 'raw-text',
+          activePipelineLabel: 'Raw text',
+          pipelines: [
+            { id: 'raw-text', label: 'Raw text', supported: true },
+            { id: 'json-pretty', label: 'JSON pretty', supported: true },
+          ],
+          stage: {
+            status: 'success',
+            message: 'Raw text pipeline active.',
+            suggestedActions: ['use-json-pretty', 'export-raw-partial'],
+          },
+        },
+        fetchedCount: 1,
+        byteLength: 24,
+        value: 'password=visibleSecret123',
+      },
+      'prettySnippet',
+      { environmentLabel: 'prod' },
+    );
+
+    expect(payload.modeUsed).toBe('prettySnippet');
+    expect(payload.redactionApplied).toBe(true);
+    expect(payload.text).toContain('### Cachify Safe Snippet');
+    expect(payload.text).toContain('- Environment: prod');
+    expect(payload.text).toContain('- Decode: Raw text');
+    expect(payload.text).toContain('- Redaction: safe-default-redaction@1.0.0');
+    expect(payload.text).toContain('[REDACTED]');
+    expect(payload.text).not.toContain('visibleSecret123');
+  });
+
   it('builds explicit revealed copy payload without additional masking', () => {
     const payload = buildRedisInspectCopyPayload(
       {

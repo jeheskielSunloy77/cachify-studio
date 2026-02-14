@@ -10,6 +10,14 @@ import {
   profileTagUpdateSchema,
   profileUpdatePatchSchema,
 } from '../profiles/profile.schemas';
+import {
+  recentRedisKeyReopenInputSchema,
+  recentRedisKeySchema,
+} from '../explorer/recent-keys.schemas';
+import {
+  savedSearchCreateInputSchema,
+  savedSearchSchema,
+} from '../explorer/saved-searches.schemas';
 
 export const ipcErrorSchema = z.object({
   code: z.string().min(1),
@@ -57,6 +65,10 @@ export const profilesDeleteChannel = 'profiles:delete' as const;
 export const profilesToggleFavoriteChannel = 'profiles:toggleFavorite' as const;
 export const profilesSetTagsChannel = 'profiles:setTags' as const;
 export const profilesSearchChannel = 'profiles:search' as const;
+export const savedSearchesListChannel = 'savedSearches:list' as const;
+export const savedSearchesCreateChannel = 'savedSearches:create' as const;
+export const savedSearchesGetChannel = 'savedSearches:get' as const;
+export const savedSearchesDeleteChannel = 'savedSearches:delete' as const;
 export const profileSecretsStorageStatusChannel = 'profileSecrets:storageStatus' as const;
 export const profileSecretsSaveChannel = 'profileSecrets:save' as const;
 export const profileSecretsLoadChannel = 'profileSecrets:load' as const;
@@ -69,6 +81,8 @@ export const connectionsStatusChangedEventChannel = 'connections:status:changed'
 export const mutationsUnlockChannel = 'mutations:unlock' as const;
 export const mutationsRelockChannel = 'mutations:relock' as const;
 export const redisKeysSearchStartChannel = 'redisKeys:search:start' as const;
+export const recentKeysListChannel = 'recentKeys:list' as const;
+export const recentKeysReopenChannel = 'recentKeys:reopen' as const;
 export const jobsCancelChannel = 'jobs:cancel' as const;
 export const redisKeysSearchProgressEventChannel = 'redisKeys:search:progress' as const;
 export const redisKeysSearchDoneEventChannel = 'redisKeys:search:done' as const;
@@ -83,6 +97,7 @@ export const redisSetAddChannel = 'redisMutations:set:add' as const;
 export const redisZSetAddChannel = 'redisMutations:zset:add' as const;
 export const redisStreamAddChannel = 'redisMutations:stream:add' as const;
 export const redisKeyDeleteChannel = 'redisMutations:key:delete' as const;
+export const exportsMarkdownCreateChannel = 'exports:markdown:create' as const;
 export const memcachedGetChannel = 'memcached:get' as const;
 export const memcachedStatsGetChannel = 'memcached:stats:get' as const;
 export const memcachedSetChannel = 'memcached:set' as const;
@@ -135,6 +150,44 @@ export const profilesSetTagsResponseSchema = z.union([
 export const profilesSearchRequestSchema = profileSearchSchema;
 export const profilesSearchResponseSchema = z.union([
   okEnvelopeSchema(z.array(connectionProfileSchema)),
+  errorEnvelopeSchema,
+]);
+
+export const savedSearchesListRequestSchema = z.object({}).strict();
+export const savedSearchesListResponseSchema = z.union([
+  okEnvelopeSchema(z.array(savedSearchSchema)),
+  errorEnvelopeSchema,
+]);
+
+export const savedSearchesCreateRequestSchema = z
+  .object({
+    search: savedSearchCreateInputSchema,
+  })
+  .strict();
+export const savedSearchesCreateResponseSchema = z.union([
+  okEnvelopeSchema(savedSearchSchema),
+  errorEnvelopeSchema,
+]);
+
+export const savedSearchesGetRequestSchema = z
+  .object({
+    id: z.string().uuid(),
+  })
+  .strict();
+export const savedSearchesGetResponseSchema = z.union([
+  okEnvelopeSchema(savedSearchSchema),
+  errorEnvelopeSchema,
+]);
+
+export const savedSearchesDeleteRequestSchema = savedSearchesGetRequestSchema;
+export const savedSearchesDeleteResponseSchema = z.union([
+  okEnvelopeSchema(
+    z
+      .object({
+        id: z.string().uuid(),
+      })
+      .strict(),
+  ),
   errorEnvelopeSchema,
 ]);
 
@@ -350,6 +403,18 @@ export const redisKeysSearchStartDataSchema = z
 
 export const redisKeysSearchStartResponseSchema = z.union([
   okEnvelopeSchema(redisKeysSearchStartDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const recentKeysListRequestSchema = z.object({}).strict();
+export const recentKeysListResponseSchema = z.union([
+  okEnvelopeSchema(z.array(recentRedisKeySchema)),
+  errorEnvelopeSchema,
+]);
+
+export const recentKeysReopenRequestSchema = recentRedisKeyReopenInputSchema;
+export const recentKeysReopenResponseSchema = z.union([
+  okEnvelopeSchema(recentRedisKeySchema),
   errorEnvelopeSchema,
 ]);
 
@@ -679,13 +744,16 @@ export const redisInspectDoneEventSchema = z
 export const redisInspectCopyRequestSchema = z
   .object({
     result: redisInspectorResultSchema,
-    copyMode: z.enum(['safeRedacted', 'explicitRevealed']).default('safeRedacted'),
+    copyMode: z
+      .enum(['safeRedacted', 'explicitRevealed', 'prettySnippet'])
+      .default('safeRedacted'),
+    environmentLabel: profileEnvironmentSchema.nullable().optional(),
   })
   .strict();
 
 export const redisInspectCopyDataSchema = z
   .object({
-    modeUsed: z.enum(['safeRedacted', 'explicitRevealed']),
+    modeUsed: z.enum(['safeRedacted', 'explicitRevealed', 'prettySnippet']),
     copiedBytes: z.number().int().nonnegative(),
     redactionApplied: z.boolean(),
   })
@@ -693,6 +761,30 @@ export const redisInspectCopyDataSchema = z
 
 export const redisInspectCopyResponseSchema = z.union([
   okEnvelopeSchema(redisInspectCopyDataSchema),
+  errorEnvelopeSchema,
+]);
+
+export const exportsMarkdownCreateRequestSchema = z
+  .object({
+    result: redisInspectorResultSchema,
+    environmentLabel: profileEnvironmentSchema.nullable().optional(),
+  })
+  .strict();
+
+export const exportsMarkdownCreateDataSchema = z
+  .object({
+    id: z.string().uuid(),
+    filePath: z.string().min(1),
+    fileName: z.string().min(1),
+    createdAt: z.string(),
+    key: z.string().min(1),
+    profileId: profileIdSchema.nullable(),
+    previewMode: z.literal('safeRedacted'),
+  })
+  .strict();
+
+export const exportsMarkdownCreateResponseSchema = z.union([
+  okEnvelopeSchema(exportsMarkdownCreateDataSchema),
   errorEnvelopeSchema,
 ]);
 
@@ -982,6 +1074,30 @@ export const ipcContract = {
     responseSchema: profilesSearchResponseSchema,
     description: 'Search profiles by query/tags/favorite.',
   },
+  savedSearchesList: {
+    channel: savedSearchesListChannel,
+    requestSchema: savedSearchesListRequestSchema,
+    responseSchema: savedSearchesListResponseSchema,
+    description: 'List saved explorer searches with optional scope metadata.',
+  },
+  savedSearchesCreate: {
+    channel: savedSearchesCreateChannel,
+    requestSchema: savedSearchesCreateRequestSchema,
+    responseSchema: savedSearchesCreateResponseSchema,
+    description: 'Create a saved explorer search with optional connection/prefix scope.',
+  },
+  savedSearchesGet: {
+    channel: savedSearchesGetChannel,
+    requestSchema: savedSearchesGetRequestSchema,
+    responseSchema: savedSearchesGetResponseSchema,
+    description: 'Get a saved explorer search by id.',
+  },
+  savedSearchesDelete: {
+    channel: savedSearchesDeleteChannel,
+    requestSchema: savedSearchesDeleteRequestSchema,
+    responseSchema: savedSearchesDeleteResponseSchema,
+    description: 'Delete a saved explorer search by id.',
+  },
   profileSecretsStorageStatus: {
     channel: profileSecretsStorageStatusChannel,
     requestSchema: profileSecretsStorageStatusRequestSchema,
@@ -1048,6 +1164,18 @@ export const ipcContract = {
     responseSchema: redisKeysSearchStartResponseSchema,
     description: 'Start progressive Redis key discovery scan job.',
   },
+  recentKeysList: {
+    channel: recentKeysListChannel,
+    requestSchema: recentKeysListRequestSchema,
+    responseSchema: recentKeysListResponseSchema,
+    description: 'List session-scoped recent Redis key inspections for the active connection.',
+  },
+  recentKeysReopen: {
+    channel: recentKeysReopenChannel,
+    requestSchema: recentKeysReopenRequestSchema,
+    responseSchema: recentKeysReopenResponseSchema,
+    description: 'Reopen a recent Redis key context by key and move it to top of recents.',
+  },
   jobsCancel: {
     channel: jobsCancelChannel,
     requestSchema: jobsCancelRequestSchema,
@@ -1065,6 +1193,12 @@ export const ipcContract = {
     requestSchema: redisInspectCopyRequestSchema,
     responseSchema: redisInspectCopyResponseSchema,
     description: 'Copy inspected Redis value in safe-redacted form by default.',
+  },
+  exportsMarkdownCreate: {
+    channel: exportsMarkdownCreateChannel,
+    requestSchema: exportsMarkdownCreateRequestSchema,
+    responseSchema: exportsMarkdownCreateResponseSchema,
+    description: 'Create and persist a redacted Markdown bundle for inspected Redis result sharing.',
   },
   redisStringSet: {
     channel: redisStringSetChannel,
@@ -1145,6 +1279,14 @@ export type ProfilesSetTagsRequest = z.infer<typeof profilesSetTagsRequestSchema
 export type ProfilesSetTagsResponse = z.infer<typeof profilesSetTagsResponseSchema>;
 export type ProfilesSearchRequest = z.infer<typeof profilesSearchRequestSchema>;
 export type ProfilesSearchResponse = z.infer<typeof profilesSearchResponseSchema>;
+export type SavedSearchesListRequest = z.infer<typeof savedSearchesListRequestSchema>;
+export type SavedSearchesListResponse = z.infer<typeof savedSearchesListResponseSchema>;
+export type SavedSearchesCreateRequest = z.infer<typeof savedSearchesCreateRequestSchema>;
+export type SavedSearchesCreateResponse = z.infer<typeof savedSearchesCreateResponseSchema>;
+export type SavedSearchesGetRequest = z.infer<typeof savedSearchesGetRequestSchema>;
+export type SavedSearchesGetResponse = z.infer<typeof savedSearchesGetResponseSchema>;
+export type SavedSearchesDeleteRequest = z.infer<typeof savedSearchesDeleteRequestSchema>;
+export type SavedSearchesDeleteResponse = z.infer<typeof savedSearchesDeleteResponseSchema>;
 export type ProfileSecretsStorageStatusRequest = z.infer<
   typeof profileSecretsStorageStatusRequestSchema
 >;
@@ -1177,6 +1319,10 @@ export type RedisKeyDiscoveryItem = z.infer<typeof redisKeyDiscoveryItemSchema>;
 export type RedisKeySearchContinuation = z.infer<typeof redisKeySearchContinuationSchema>;
 export type RedisKeysSearchStartRequest = z.infer<typeof redisKeysSearchStartRequestSchema>;
 export type RedisKeysSearchStartResponse = z.infer<typeof redisKeysSearchStartResponseSchema>;
+export type RecentKeysListRequest = z.infer<typeof recentKeysListRequestSchema>;
+export type RecentKeysListResponse = z.infer<typeof recentKeysListResponseSchema>;
+export type RecentKeysReopenRequest = z.infer<typeof recentKeysReopenRequestSchema>;
+export type RecentKeysReopenResponse = z.infer<typeof recentKeysReopenResponseSchema>;
 export type JobsCancelRequest = z.infer<typeof jobsCancelRequestSchema>;
 export type JobsCancelResponse = z.infer<typeof jobsCancelResponseSchema>;
 export type RedisKeysSearchProgressEvent = z.infer<typeof redisKeysSearchProgressEventSchema>;
@@ -1208,6 +1354,8 @@ export type RedisInspectProgressEvent = z.infer<typeof redisInspectProgressEvent
 export type RedisInspectDoneEvent = z.infer<typeof redisInspectDoneEventSchema>;
 export type RedisInspectCopyRequest = z.infer<typeof redisInspectCopyRequestSchema>;
 export type RedisInspectCopyResponse = z.infer<typeof redisInspectCopyResponseSchema>;
+export type ExportsMarkdownCreateRequest = z.infer<typeof exportsMarkdownCreateRequestSchema>;
+export type ExportsMarkdownCreateResponse = z.infer<typeof exportsMarkdownCreateResponseSchema>;
 export type RedisStringSetRequest = z.infer<typeof redisStringSetRequestSchema>;
 export type RedisStringSetResponse = z.infer<typeof redisStringSetResponseSchema>;
 export type RedisHashSetFieldRequest = z.infer<typeof redisHashSetFieldRequestSchema>;

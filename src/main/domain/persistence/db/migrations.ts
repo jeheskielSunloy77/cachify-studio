@@ -57,6 +57,41 @@ const migrations: Migration[] = [
       ALTER TABLE connection_profiles ADD COLUMN environment_label TEXT NOT NULL DEFAULT 'local';
     `,
   },
+  {
+    id: '0005_create_saved_searches',
+    sql: `
+      CREATE TABLE IF NOT EXISTS saved_searches (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        query TEXT NOT NULL,
+        connection_profile_id TEXT,
+        prefix TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (connection_profile_id) REFERENCES connection_profiles(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_saved_searches_updated_at
+        ON saved_searches(updated_at DESC);
+    `,
+  },
+  {
+    id: '0006_create_export_artifacts_index',
+    sql: `
+      CREATE TABLE IF NOT EXISTS export_artifacts (
+        id TEXT PRIMARY KEY,
+        file_path TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        profile_id TEXT,
+        redis_key TEXT NOT NULL,
+        redaction_policy TEXT NOT NULL,
+        redaction_policy_version TEXT NOT NULL,
+        preview_mode TEXT NOT NULL,
+        FOREIGN KEY (profile_id) REFERENCES connection_profiles(id) ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_export_artifacts_created_at
+        ON export_artifacts(created_at DESC);
+    `,
+  },
 ];
 
 type SqliteDatabaseInstance = InstanceType<typeof SqliteDatabase>;

@@ -96,6 +96,32 @@ const buildApi = (overrides: Partial<RendererApi> = {}): RendererApi => {
         }),
       ),
     },
+    savedSearches: {
+      list: vi.fn(async () => ok([])),
+      create: vi.fn(async () =>
+        ok({
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'session:* [prefix:session]',
+          query: 'session:*',
+          connectionProfileId: 'profile-1',
+          prefix: 'session',
+          createdAt: 'now',
+          updatedAt: 'now',
+        }),
+      ),
+      getById: vi.fn(async () =>
+        ok({
+          id: '11111111-1111-4111-8111-111111111111',
+          name: 'session:* [prefix:session]',
+          query: 'session:*',
+          connectionProfileId: 'profile-1',
+          prefix: 'session',
+          createdAt: 'now',
+          updatedAt: 'now',
+        }),
+      ),
+      delete: vi.fn(async () => ok({ id: '11111111-1111-4111-8111-111111111111' })),
+    },
     profileSecrets: {
       storageStatus: async () =>
         ok({
@@ -215,6 +241,17 @@ const buildApi = (overrides: Partial<RendererApi> = {}): RendererApi => {
         (): (() => void) => () => undefined,
       ),
     },
+    recentKeys: {
+      list: vi.fn(async () => ok([])),
+      reopen: vi.fn(async ({ key }: { key: string }) =>
+        ok({
+          key,
+          type: 'string' as const,
+          ttlSeconds: -1,
+          inspectedAt: new Date().toISOString(),
+        }),
+      ),
+    },
     redisInspect: {
       start: vi.fn(async () =>
         ok({
@@ -241,6 +278,19 @@ const buildApi = (overrides: Partial<RendererApi> = {}): RendererApi => {
         ok({
           jobId,
           cancelled: true,
+        }),
+      ),
+    },
+    exports: {
+      createMarkdown: vi.fn(async () =>
+        ok({
+          id: '11111111-1111-4111-8111-111111111111',
+          filePath: '/tmp/cachify-export.md',
+          fileName: 'cachify-export.md',
+          createdAt: new Date().toISOString(),
+          key: 'inspect:key',
+          profileId: 'profile-1',
+          previewMode: 'safeRedacted' as const,
         }),
       ),
     },
@@ -314,6 +364,266 @@ describe('Redis explorer panel', () => {
 
     await user.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(cancel).toHaveBeenCalledWith({ jobId: 'job-1' });
+  });
+
+  it('saves current search with scope and renders saved-search list', async () => {
+    const savedSearches: Array<{
+      id: string;
+      name: string;
+      query: string;
+      connectionProfileId: string | null;
+      prefix: string | null;
+      createdAt: string;
+      updatedAt: string;
+    }> = [];
+
+    const list = vi.fn(async () => ok(savedSearches));
+    const create = vi.fn(async ({ search }: { search: { query: string; connectionProfileId: string | null; prefix: string | null } }) => {
+      const created = {
+        id: '11111111-1111-4111-8111-111111111111',
+        name: `${search.query} [connection:${search.connectionProfileId ?? 'none'} | prefix:${search.prefix ?? 'none'}]`,
+        query: search.query,
+        connectionProfileId: search.connectionProfileId,
+        prefix: search.prefix,
+        createdAt: 'now',
+        updatedAt: 'now',
+      };
+      savedSearches.splice(0, 0, created);
+      return ok(created);
+    });
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      savedSearches: {
+        list,
+        create,
+        getById: vi.fn(async ({ id }: { id: string }) =>
+          ok(savedSearches.find((item) => item.id === id) ?? savedSearches[0]),
+        ),
+        delete: vi.fn(async ({ id }: { id: string }) => {
+          const index = savedSearches.findIndex((item) => item.id === id);
+          if (index >= 0) {
+            savedSearches.splice(index, 1);
+          }
+          return ok({ id });
+        }),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(await screen.findByLabelText('Search substring or pattern'), 'session:*');
+    await user.type(screen.getByLabelText('Prefix'), 'service:session');
+    await user.click(screen.getByRole('button', { name: 'Save search' }));
+
+    await waitFor(() =>
+      expect(create).toHaveBeenCalledWith({
+        search: {
+          query: 'session:*',
+          connectionProfileId: 'profile-1',
+          prefix: 'service:session',
+        },
+      }),
+    );
+
+    const savedList = await screen.findByTestId('saved-searches-list');
+    await waitFor(() => {
+      expect(within(savedList).getByText('session:*')).toBeInTheDocument();
+      expect(within(savedList).getByText(/scope: connection/i)).toBeInTheDocument();
+    });
+  });
+
+  it('recalls saved search and reruns key discovery with saved payload', async () => {
+    const startSearch = vi.fn(async () =>
+      ok({
+        jobId: 'job-recall',
+        startedAt: new Date().toISOString(),
+      }),
+    );
+    const savedSearch = {
+      id: '11111111-1111-4111-8111-111111111111',
+      name: 'orders:* [connection:profile-1 | prefix:orders]',
+      query: 'orders:*',
+      connectionProfileId: 'profile-1',
+      prefix: 'orders',
+      createdAt: 'now',
+      updatedAt: 'now',
+    };
+    const getById = vi.fn(async () => ok(savedSearch));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch,
+        onSearchProgress: () => () => undefined,
+        onSearchDone: () => () => undefined,
+      },
+      savedSearches: {
+        list: vi.fn(async () => ok([savedSearch])),
+        create: vi.fn(async () => ok(savedSearch)),
+        getById,
+        delete: vi.fn(async () => ok({ id: savedSearch.id })),
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Use saved search' }));
+
+    await waitFor(() => {
+      expect(getById).toHaveBeenCalledWith({ id: savedSearch.id });
+      expect(startSearch).toHaveBeenCalledWith({
+        query: 'orders:*',
+        prefix: 'orders',
+      });
+    });
+  });
+
+  it('renders session recents and reopens selection through inspect flow', async () => {
+    const inspectStart = vi.fn(async () =>
+      ok({
+        jobId: 'inspect-recent',
+        startedAt: new Date().toISOString(),
+      }),
+    );
+    const recentItem = {
+      key: 'orders:42',
+      type: 'hash' as const,
+      ttlSeconds: 120,
+      inspectedAt: '2026-02-13T10:00:00.000Z',
+    };
+    const reopen = vi.fn(async () => ok(recentItem));
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      recentKeys: {
+        list: vi.fn(async () => ok([recentItem])),
+        reopen,
+      },
+      redisInspect: {
+        start: inspectStart,
+        onProgress: () => () => undefined,
+        onDone: () => () => undefined,
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    expect(await screen.findByText('orders:42')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Reopen recent' }));
+
+    await waitFor(() => {
+      expect(reopen).toHaveBeenCalledWith({ key: 'orders:42' });
+      expect(inspectStart).toHaveBeenCalledWith(
+        expect.objectContaining({
+          key: 'orders:42',
+        }),
+      );
+    });
+  });
+
+  it('exports markdown bundle and surfaces recoverable failure/success feedback', async () => {
+    let onSearchProgress: ((event: RedisKeysSearchProgressEvent) => void) | null = null;
+    let onInspectDone: ((event: RedisInspectDoneEvent) => void) | null = null;
+    const createMarkdown = vi
+      .fn()
+      .mockImplementationOnce(async () => fail('EXPORT_WRITE_FAILED', 'Failed to write Markdown bundle.'))
+      .mockImplementationOnce(async () =>
+        ok({
+          id: '11111111-1111-4111-8111-111111111111',
+          filePath: '/tmp/cachify-export.md',
+          fileName: 'cachify-export.md',
+          createdAt: new Date().toISOString(),
+          key: 'export:key',
+          profileId: 'profile-1',
+          previewMode: 'safeRedacted' as const,
+        }),
+      );
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      redisKeys: {
+        startSearch: async () =>
+          ok({
+            jobId: 'job-export',
+            startedAt: new Date().toISOString(),
+          }),
+        onSearchProgress: (listener) => {
+          onSearchProgress = listener;
+          return () => undefined;
+        },
+        onSearchDone: () => () => undefined,
+      },
+      redisInspect: {
+        start: async () =>
+          ok({
+            jobId: 'inspect-export',
+            startedAt: new Date().toISOString(),
+          }),
+        onProgress: () => () => undefined,
+        onDone: (listener) => {
+          onInspectDone = listener;
+          return () => undefined;
+        },
+      },
+      exports: {
+        createMarkdown,
+      },
+    });
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole('button', { name: 'Start search' }));
+    onSearchProgress?.({
+      jobId: 'job-export',
+      status: 'running',
+      keys: [{ key: 'export:key', prefixSegments: ['export', 'key'], metadataState: 'pending' }],
+      scannedCount: 1,
+      emittedCount: 1,
+      cursor: '0',
+      capReached: false,
+      elapsedMs: 10,
+    });
+    await user.click(await screen.findByRole('button', { name: 'Inspect' }));
+    onInspectDone?.({
+      jobId: 'inspect-export',
+      status: 'completed',
+      result: {
+        key: 'export:key',
+        type: 'string',
+        ttlSeconds: -1,
+        isPartial: false,
+        capReached: false,
+        fetchedCount: 1,
+        byteLength: 5,
+        previewBytes: 5,
+        maxDepthApplied: null,
+        redaction: {
+          policyId: 'safe-default-redaction',
+          policyVersion: '1.0.0',
+          policySummary: 'Masks JWT, bearer tokens, sensitive key/value pairs, and high-entropy tokens.',
+          redactedSegments: 0,
+          redactionApplied: false,
+        },
+        value: 'value',
+      },
+    });
+
+    await user.click(await screen.findByRole('button', { name: 'Export Markdown bundle' }));
+    expect(await screen.findByText('Failed to write Markdown bundle.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Export Markdown bundle' }));
+    await waitFor(() =>
+      expect(createMarkdown).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          environmentLabel: 'local',
+          result: expect.objectContaining({
+            key: 'export:key',
+          }),
+        }),
+      ),
+    );
+    expect(await screen.findByText('Markdown bundle exported to /tmp/cachify-export.md.')).toBeInTheDocument();
   });
 
   it('shows limit-reached guidance when done event reports caps', async () => {
@@ -980,6 +1290,7 @@ describe('Redis explorer panel', () => {
     const inspectCopy = vi
       .fn()
       .mockResolvedValueOnce(ok({ modeUsed: 'safeRedacted', copiedBytes: 64, redactionApplied: true }))
+      .mockResolvedValueOnce(ok({ modeUsed: 'prettySnippet', copiedBytes: 128, redactionApplied: true }))
       .mockResolvedValueOnce(ok({ modeUsed: 'explicitRevealed', copiedBytes: 64, redactionApplied: false }));
 
     (window as typeof window & { api: RendererApi }).api = buildApi({
@@ -1066,8 +1377,17 @@ describe('Redis explorer panel', () => {
     expect(inspectCopy).toHaveBeenLastCalledWith({
       result: expect.objectContaining({ key: 'copy:key', type: 'string' }),
       copyMode: 'safeRedacted',
+      environmentLabel: 'local',
     });
     expect(await screen.findByText('Copied safe-redacted value to clipboard.')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Copy pretty snippet' }));
+    expect(inspectCopy).toHaveBeenLastCalledWith({
+      result: expect.objectContaining({ key: 'copy:key', type: 'string' }),
+      copyMode: 'prettySnippet',
+      environmentLabel: 'local',
+    });
+    expect(await screen.findByText('Copied safe pretty snippet to clipboard.')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Copy revealed' }));
     expect(await screen.findByRole('button', { name: 'Confirm revealed copy' })).toBeInTheDocument();
@@ -1076,6 +1396,7 @@ describe('Redis explorer panel', () => {
     expect(inspectCopy).toHaveBeenLastCalledWith({
       result: expect.objectContaining({ key: 'copy:key', type: 'string' }),
       copyMode: 'explicitRevealed',
+      environmentLabel: 'local',
     });
     expect(await screen.findByText('Copied revealed value to clipboard.')).toBeInTheDocument();
   });
@@ -2076,7 +2397,10 @@ describe('Redis explorer panel', () => {
     });
 
     const valueInput = await screen.findByLabelText('Set string value');
-    fireEvent.change(valueInput, { target: { value: 'next-value' } });
+    await waitFor(() => expect(valueInput).toHaveValue('value'));
+    await user.clear(valueInput);
+    await user.type(valueInput, 'next-value');
+    expect(valueInput).toHaveValue('next-value');
     await user.click(screen.getByRole('button', { name: 'Set string value' }));
     await waitFor(() =>
       expect(stringSet).toHaveBeenCalledWith({ key: 'mut:key', value: 'next-value' }),

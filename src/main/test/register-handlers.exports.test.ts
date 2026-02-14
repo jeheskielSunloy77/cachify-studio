@@ -1,23 +1,18 @@
 // @vitest-environment node
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  memcachedSetChannel,
-  memcachedSetResponseSchema,
-  redisInspectCopyChannel,
-  redisInspectCopyResponseSchema,
-  redisStreamAddChannel,
-  redisStringSetChannel,
-  redisStringSetResponseSchema,
   type RedisInspectorResult,
+  exportsMarkdownCreateChannel,
+  exportsMarkdownCreateResponseSchema,
 } from '../../shared/ipc/ipc.contract';
 
 const noneResultPayload: RedisInspectorResult = {
   key: 'missing:key',
-  type: 'none',
+  type: 'none' as const,
   ttlSeconds: -2,
-  isPartial: false,
-  capReached: false,
-  previewBytes: 0,
+  isPartial: false as const,
+  capReached: false as const,
+  previewBytes: 0 as const,
   maxDepthApplied: null,
   redaction: {
     policyId: 'safe-default-redaction',
@@ -26,7 +21,7 @@ const noneResultPayload: RedisInspectorResult = {
     redactedSegments: 0,
     redactionApplied: false,
   },
-  fetchedCount: 0,
+  fetchedCount: 0 as const,
   reason: 'Key does not exist.',
 };
 
@@ -37,15 +32,10 @@ const mocks = vi.hoisted(() => {
     ipcMainHandle: vi.fn((channel: string, handler: (...args: unknown[]) => Promise<unknown>) => {
       handlers.set(channel, handler);
     }),
-    clipboardWriteText: vi.fn(),
     getPersistenceStatus: vi.fn(() => ({ ready: true })),
     getDatabase: vi.fn(() => ({ __db: true })),
-    buildRedisInspectCopyPayload: vi.fn(() => ({
-      text: 'copy',
-      modeUsed: 'safeRedacted',
-      copiedBytes: 4,
-      redactionApplied: true,
-    })),
+    createExportArtifact: vi.fn(),
+    createMarkdownBundle: vi.fn(),
     profilesService: {
       list: vi.fn(),
       create: vi.fn(),
@@ -61,8 +51,14 @@ const mocks = vi.hoisted(() => {
       getById: vi.fn(),
       delete: vi.fn(),
     },
+    recentKeysSessionService: {
+      list: vi.fn(),
+      reopen: vi.fn(),
+      record: vi.fn(),
+      reset: vi.fn(),
+    },
     profileSecrets: {
-      getStorageStatus: vi.fn(() => ({ backend: 'kwallet', canPersistCredentials: true })),
+      getStorageStatus: vi.fn(),
       save: vi.fn(),
       load: vi.fn(),
       delete: vi.fn(),
@@ -77,7 +73,6 @@ const mocks = vi.hoisted(() => {
         environmentLabel: 'local',
         safetyMode: 'readOnly',
         safetyUpdatedAt: 'now',
-        safetyReason: 'read-only',
         lastConnectionError: null,
         updatedAt: 'now',
       })),
@@ -106,8 +101,8 @@ const mocks = vi.hoisted(() => {
       executeRedisZSetAdd: vi.fn(),
       executeRedisStreamAdd: vi.fn(),
       executeRedisKeyDelete: vi.fn(),
-      executeMemcachedSet: vi.fn(),
       executeMemcachedGet: vi.fn(),
+      executeMemcachedSet: vi.fn(),
       executeMemcachedStats: vi.fn(),
       executeRedisCommand: vi.fn(),
     },
@@ -122,7 +117,7 @@ vi.mock('electron', () => ({
     getAllWindows: vi.fn(() => []),
   },
   clipboard: {
-    writeText: mocks.clipboardWriteText,
+    writeText: vi.fn(),
   },
 }));
 
@@ -131,12 +126,24 @@ vi.mock('../domain/persistence/db/connection', () => ({
   getDatabase: mocks.getDatabase,
 }));
 
+vi.mock('../domain/persistence/repositories/exports-index.repository', () => ({
+  createExportArtifact: mocks.createExportArtifact,
+}));
+
+vi.mock('../domain/exports/markdown-bundle.service', () => ({
+  createMarkdownBundle: mocks.createMarkdownBundle,
+}));
+
 vi.mock('../domain/persistence/services/connection-profiles.service', () => ({
   profilesService: mocks.profilesService,
 }));
 
 vi.mock('../domain/persistence/services/saved-searches.service', () => ({
   savedSearchesService: mocks.savedSearchesService,
+}));
+
+vi.mock('../domain/cache/session/recent-keys-session.service', () => ({
+  recentKeysSessionService: mocks.recentKeysSessionService,
 }));
 
 vi.mock('../domain/security/secrets', () => ({
@@ -157,7 +164,12 @@ vi.mock('../domain/cache/explorer/redis-key-discovery.service', () => ({
 
 vi.mock('../domain/cache/inspector/redis-inspector.service', () => ({
   runRedisInspectJob: vi.fn(),
-  buildRedisInspectCopyPayload: mocks.buildRedisInspectCopyPayload,
+  buildRedisInspectCopyPayload: vi.fn(() => ({
+    text: 'copy',
+    modeUsed: 'safeRedacted',
+    copiedBytes: 4,
+    redactionApplied: true,
+  })),
 }));
 
 vi.mock('../domain/cache/inspector/memcached-inspector.service', () => ({
@@ -165,116 +177,84 @@ vi.mock('../domain/cache/inspector/memcached-inspector.service', () => ({
   normalizeMemcachedStatsResult: vi.fn(),
 }));
 
-describe('registerIpcHandlers mutation channels', () => {
+describe('registerIpcHandlers exports markdown channel', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     mocks.handlers.clear();
+    mocks.getPersistenceStatus.mockReturnValue({ ready: true });
     const mod = await import('../ipc/register-handlers');
     mod.registerIpcHandlers();
   });
 
-  it('returns blocked envelope for redis string set when read-only', async () => {
-    mocks.connectionSessionService.executeRedisStringSet.mockResolvedValue({
+  it('returns validation envelope for invalid exports payload', async () => {
+    const handler = mocks.handlers.get(exportsMarkdownCreateChannel);
+    const response = await handler?.({}, {});
+    const parsed = exportsMarkdownCreateResponseSchema.safeParse(response);
+
+    expect(parsed.success).toBe(true);
+    if (parsed.success && 'error' in parsed.data) {
+      expect(parsed.data.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('returns write failure envelope when markdown bundle write fails', async () => {
+    mocks.createMarkdownBundle.mockReturnValue({
       ok: false,
       error: {
-        code: 'MUTATION_BLOCKED_READ_ONLY',
-        message: 'Mutations are blocked while safety mode is read-only.',
+        code: 'EXPORT_WRITE_FAILED',
+        message: 'Failed to write Markdown bundle.',
       },
     });
 
-    const handler = mocks.handlers.get(redisStringSetChannel);
-    const response = await handler?.({}, { key: 'guard:key', value: 'next' });
-    const parsed = redisStringSetResponseSchema.safeParse(response);
+    const handler = mocks.handlers.get(exportsMarkdownCreateChannel);
+    const response = await handler?.({}, {
+      result: noneResultPayload,
+      environmentLabel: 'local',
+    });
+    const parsed = exportsMarkdownCreateResponseSchema.safeParse(response);
 
     expect(parsed.success).toBe(true);
     if (parsed.success && 'error' in parsed.data) {
-      expect(parsed.data.error.code).toBe('MUTATION_BLOCKED_READ_ONLY');
+      expect(parsed.data.error.code).toBe('EXPORT_WRITE_FAILED');
     }
   });
 
-  it('returns validation envelope for redis stream add invalid payload', async () => {
-    const handler = mocks.handlers.get(redisStreamAddChannel);
-    const response = await handler?.({}, { key: 'stream:key', entries: [] });
-
-    expect(response).toEqual(
-      expect.objectContaining({
-        ok: false,
-        error: expect.objectContaining({
-          code: 'VALIDATION_ERROR',
-        }),
-      }),
-    );
-  });
-
-  it('returns success envelope for memcached:set', async () => {
-    mocks.connectionSessionService.executeMemcachedSet.mockResolvedValue({
+  it('returns success envelope when bundle is written and indexed', async () => {
+    mocks.createMarkdownBundle.mockReturnValue({
       ok: true,
       data: {
-        key: 'session:42',
-        stored: true,
-        flags: 0,
-        ttlSeconds: 0,
-        bytes: 11,
+        filePath: '/tmp/cachify-export.md',
+        fileName: 'cachify-export.md',
+        createdAt: '2026-02-13T10:00:00.000Z',
+        key: 'missing:key',
+        redactionPolicy: 'safe-default-redaction',
+        redactionPolicyVersion: '1.0.0',
+        previewMode: 'safeRedacted',
       },
     });
+    mocks.createExportArtifact.mockReturnValue({
+      id: '11111111-1111-4111-8111-111111111111',
+      filePath: '/tmp/cachify-export.md',
+      createdAt: '2026-02-13T10:00:00.000Z',
+      profileId: 'profile-1',
+      key: 'missing:key',
+      redactionPolicy: 'safe-default-redaction',
+      redactionPolicyVersion: '1.0.0',
+      previewMode: 'safeRedacted',
+    });
 
-    const handler = mocks.handlers.get(memcachedSetChannel);
-    const response = await handler?.({}, { key: 'session:42', value: '{"ok":true}' });
-    const parsed = memcachedSetResponseSchema.safeParse(response);
+    const handler = mocks.handlers.get(exportsMarkdownCreateChannel);
+    const response = await handler?.({}, {
+      result: noneResultPayload,
+      environmentLabel: 'local',
+    });
+    const parsed = exportsMarkdownCreateResponseSchema.safeParse(response);
 
     expect(parsed.success).toBe(true);
     if (parsed.success && 'data' in parsed.data) {
-      expect(parsed.data.data.key).toBe('session:42');
-      expect(parsed.data.data.stored).toBe(true);
-    }
-  });
-
-  it('handles redisInspect:copy pretty-snippet mode', async () => {
-    mocks.buildRedisInspectCopyPayload.mockReturnValueOnce({
-      text: '### Cachify Safe Snippet\n- Environment: prod',
-      modeUsed: 'prettySnippet',
-      copiedBytes: 41,
-      redactionApplied: true,
-    });
-
-    const handler = mocks.handlers.get(redisInspectCopyChannel);
-    const response = await handler?.({}, {
-      result: noneResultPayload,
-      copyMode: 'prettySnippet',
-      environmentLabel: 'prod',
-    });
-    const parsed = redisInspectCopyResponseSchema.safeParse(response);
-
-    expect(parsed.success).toBe(true);
-    if (parsed.success && 'data' in parsed.data) {
-      expect(parsed.data.data.modeUsed).toBe('prettySnippet');
-      expect(parsed.data.data.redactionApplied).toBe(true);
-    }
-    expect(mocks.buildRedisInspectCopyPayload).toHaveBeenLastCalledWith(
-      noneResultPayload,
-      'prettySnippet',
-      { environmentLabel: 'prod' },
-    );
-    expect(mocks.clipboardWriteText).toHaveBeenLastCalledWith(
-      expect.stringContaining('Cachify Safe Snippet'),
-    );
-  });
-
-  it('returns clipboard failure envelope for redisInspect:copy errors', async () => {
-    mocks.clipboardWriteText.mockImplementationOnce(() => {
-      throw new Error('clipboard unavailable');
-    });
-
-    const handler = mocks.handlers.get(redisInspectCopyChannel);
-    const response = await handler?.({}, {
-      result: noneResultPayload,
-      copyMode: 'safeRedacted',
-    });
-    const parsed = redisInspectCopyResponseSchema.safeParse(response);
-
-    expect(parsed.success).toBe(true);
-    if (parsed.success && 'error' in parsed.data) {
-      expect(parsed.data.error.code).toBe('CLIPBOARD_WRITE_FAILED');
+      expect(parsed.data.data.id).toBe('11111111-1111-4111-8111-111111111111');
+      expect(parsed.data.data.filePath).toBe('/tmp/cachify-export.md');
+      expect(parsed.data.data.previewMode).toBe('safeRedacted');
     }
   });
 });

@@ -15,6 +15,8 @@ import type {
   RedisKeyDiscoveryItem,
   RedisKeysSearchDoneEvent,
   RedisKeysSearchProgressEvent,
+  RecentKeysListResponse,
+  SavedSearchesListResponse,
 } from '@/shared/ipc/ipc.contract';
 
 const buildPrefixOptions = (keys: RedisKeyDiscoveryItem[]) => {
@@ -174,6 +176,37 @@ type RedisExplorerPanelProps = {
 type MemcachedGetData = Extract<MemcachedGetResponse, { ok: true }>['data'];
 type MemcachedStatsData = Extract<MemcachedStatsGetResponse, { ok: true }>['data'];
 type MemcachedSetData = Extract<MemcachedSetResponse, { ok: true }>['data'];
+type RecentKeyItem = Extract<RecentKeysListResponse, { ok: true }>['data'][number];
+type SavedSearchItem = Extract<SavedSearchesListResponse, { ok: true }>['data'][number];
+
+const resolveSavedSearchScopeLabel = (savedSearch: SavedSearchItem) => {
+  const scopeParts = [];
+  if (savedSearch.connectionProfileId) {
+    scopeParts.push(`connection ${savedSearch.connectionProfileId.slice(0, 8)}`);
+  }
+  if (savedSearch.prefix) {
+    scopeParts.push(`prefix ${savedSearch.prefix}`);
+  }
+  if (scopeParts.length === 0) {
+    return 'scope: global';
+  }
+  return `scope: ${scopeParts.join(' · ')}`;
+};
+
+const formatRecentInspectedAt = (inspectedAt: string) => {
+  const parsed = new Date(inspectedAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return inspectedAt;
+  }
+  return parsed.toLocaleTimeString();
+};
+
+const resolveErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return fallback;
+};
 
 export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps) => {
   const [query, setQuery] = useState('');
@@ -202,6 +235,8 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [streamMutationEntries, setStreamMutationEntries] = useState('');
   const [deleteConfirmPending, setDeleteConfirmPending] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [exportMessage, setExportMessage] = useState<string | null>(null);
+  const [exportPending, setExportPending] = useState(false);
   const [copyConfirmRevealed, setCopyConfirmRevealed] = useState(false);
   const [preferredDecodePipelineId, setPreferredDecodePipelineId] = useState<InspectorDecodePipelineId>(
     () => readDecodePipelinePreference(),
@@ -221,6 +256,12 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [memcachedSetValue, setMemcachedSetValue] = useState('');
   const [memcachedSetFlags, setMemcachedSetFlags] = useState('');
   const [memcachedSetTtlSeconds, setMemcachedSetTtlSeconds] = useState('');
+  const [savedSearches, setSavedSearches] = useState<SavedSearchItem[]>([]);
+  const [savedSearchMessage, setSavedSearchMessage] = useState<string | null>(null);
+  const [savedSearchPending, setSavedSearchPending] = useState(false);
+  const [recentKeys, setRecentKeys] = useState<RecentKeyItem[]>([]);
+  const [recentKeysMessage, setRecentKeysMessage] = useState<string | null>(null);
+  const [recentKeysPending, setRecentKeysPending] = useState(false);
   const previousSafetyMode = useRef(connectionStatus.safetyMode);
   const stringPreviewValue = inspectResult?.type === 'string' ? inspectResult.value : null;
 
@@ -242,6 +283,9 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const redisInspectApi = api.redisInspect;
   const redisMutationsApi = api.redisMutations;
   const memcachedApi = api.memcached;
+  const exportsApi = api.exports;
+  const savedSearchesApi = api.savedSearches;
+  const recentKeysApi = api.recentKeys;
   const jobsApi = api.jobs;
   const explorerApiAvailable =
     Boolean(redisKeysApi?.startSearch) &&
@@ -265,6 +309,15 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     Boolean(memcachedApi?.get) &&
     Boolean(memcachedApi?.getStats);
   const memcachedSetAvailable = Boolean(memcachedApi?.set);
+  const exportsApiAvailable = Boolean(exportsApi?.createMarkdown);
+  const savedSearchesApiAvailable =
+    Boolean(savedSearchesApi?.list) &&
+    Boolean(savedSearchesApi?.create) &&
+    Boolean(savedSearchesApi?.delete) &&
+    Boolean(savedSearchesApi?.getById);
+  const recentKeysApiAvailable =
+    Boolean(recentKeysApi?.list) &&
+    Boolean(recentKeysApi?.reopen);
 
   useEffect(() => {
     if (!explorerApiAvailable || !redisKeysApi?.onSearchProgress || !redisKeysApi?.onSearchDone) {
@@ -304,6 +357,68 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   }, [explorerApiAvailable, redisKeysApi, runningJobId]);
 
   useEffect(() => {
+    if (!savedSearchesApi?.list) {
+      setSavedSearches([]);
+      return;
+    }
+
+    let active = true;
+    void savedSearchesApi
+      .list({})
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        if ('error' in response) {
+          setSavedSearchMessage(response.error.message);
+          return;
+        }
+        setSavedSearches(response.data);
+      })
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
+        setSavedSearchMessage(resolveErrorMessage(error, 'Failed to load saved searches.'));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [savedSearchesApi]);
+
+  useEffect(() => {
+    if (!recentKeysApi?.list || !canSearch) {
+      setRecentKeys([]);
+      return;
+    }
+
+    let active = true;
+    void recentKeysApi
+      .list({})
+      .then((response) => {
+        if (!active) {
+          return;
+        }
+        if ('error' in response) {
+          setRecentKeysMessage(response.error.message);
+          return;
+        }
+        setRecentKeys(response.data);
+      })
+      .catch((error: unknown) => {
+        if (!active) {
+          return;
+        }
+        setRecentKeysMessage(resolveErrorMessage(error, 'Failed to load recent keys.'));
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [recentKeysApi, canSearch, connectionStatus.activeProfileId]);
+
+  useEffect(() => {
     const revealMode = inspectResult?.reveal?.mode ?? 'redacted';
     const disconnected = connectionStatus.state !== 'connected';
     const relocked =
@@ -323,6 +438,7 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   useEffect(() => {
     setDeleteConfirmPending(false);
     setRedisMutationMessage(null);
+    setExportMessage(null);
     if (!inspectResult) {
       setStringMutationValue('');
       setHashMutationField('');
@@ -391,6 +507,13 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
         setInspectMessage('Inspect cancelled.');
       } else {
         setInspectMessage('Inspect complete.');
+        if (recentKeysApi?.list && canSearch) {
+          void recentKeysApi.list({}).then((response) => {
+            if ('data' in response) {
+              setRecentKeys(response.data);
+            }
+          });
+        }
       }
     });
 
@@ -398,16 +521,22 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
       unsubscribeProgress();
       unsubscribeDone();
     };
-  }, [inspectorApiAvailable, redisInspectApi]);
+  }, [inspectorApiAvailable, redisInspectApi, recentKeysApi, canSearch]);
 
-  const startSearch = async () => {
+  const startSearch = async (
+    overrides?: {
+      query?: string;
+      prefix?: string | null;
+    },
+  ) => {
     if (!canSearch || !redisKeysApi?.startSearch) {
       return;
     }
 
-    const prefixCandidate = (selectedPrefix ?? manualPrefix).trim();
+    const queryCandidate = overrides?.query ?? query;
+    const prefixCandidate = (overrides?.prefix ?? selectedPrefix ?? manualPrefix).trim();
     const payload = {
-      query: query.trim() || undefined,
+      query: queryCandidate.trim() || undefined,
       prefix: prefixCandidate || undefined,
     };
 
@@ -431,6 +560,158 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
       return;
     }
     await jobsApi.cancel({ jobId: runningJobId });
+  };
+
+  const refreshSavedSearches = async () => {
+    if (!savedSearchesApi?.list) {
+      return;
+    }
+    const response = await savedSearchesApi.list({});
+    if ('error' in response) {
+      setSavedSearchMessage(response.error.message);
+      return;
+    }
+    setSavedSearches(response.data);
+  };
+
+  const saveCurrentSearch = async () => {
+    if (!savedSearchesApi?.create) {
+      return;
+    }
+    const queryCandidate = query.trim();
+    if (queryCandidate.length === 0) {
+      setSavedSearchMessage('Enter a search query before saving.');
+      return;
+    }
+
+    const prefixCandidate = (selectedPrefix ?? manualPrefix).trim();
+    setSavedSearchPending(true);
+    setSavedSearchMessage(null);
+    try {
+      const response = await savedSearchesApi.create({
+        search: {
+          query: queryCandidate,
+          connectionProfileId: connectionStatus.activeProfileId,
+          prefix: prefixCandidate || null,
+        },
+      });
+      if ('error' in response) {
+        setSavedSearchMessage(response.error.message);
+        return;
+      }
+      setSavedSearchMessage('Search saved.');
+      await refreshSavedSearches();
+    } catch (error) {
+      setSavedSearchMessage(resolveErrorMessage(error, 'Failed to save search.'));
+    } finally {
+      setSavedSearchPending(false);
+    }
+  };
+
+  const deleteSavedSearch = async (id: string) => {
+    if (!savedSearchesApi?.delete) {
+      return;
+    }
+    setSavedSearchPending(true);
+    setSavedSearchMessage(null);
+    try {
+      const response = await savedSearchesApi.delete({ id });
+      if ('error' in response) {
+        setSavedSearchMessage(response.error.message);
+        return;
+      }
+      setSavedSearchMessage('Saved search deleted.');
+      await refreshSavedSearches();
+    } catch (error) {
+      setSavedSearchMessage(resolveErrorMessage(error, 'Failed to delete saved search.'));
+    } finally {
+      setSavedSearchPending(false);
+    }
+  };
+
+  const recallSavedSearch = async (id: string) => {
+    if (!savedSearchesApi?.getById) {
+      return;
+    }
+    if (!canSearch) {
+      setSavedSearchMessage('Connect an active Redis profile before recalling saved searches.');
+      return;
+    }
+    setSavedSearchPending(true);
+    setSavedSearchMessage(null);
+    try {
+      const response = await savedSearchesApi.getById({ id });
+      if ('error' in response) {
+        setSavedSearchMessage(response.error.message);
+        return;
+      }
+      const savedSearch = response.data;
+      setQuery(savedSearch.query);
+      setManualPrefix(savedSearch.prefix ?? '');
+      setSelectedPrefix(savedSearch.prefix ?? null);
+
+      const scopeMismatch =
+        savedSearch.connectionProfileId != null &&
+        connectionStatus.activeProfileId != null &&
+        savedSearch.connectionProfileId !== connectionStatus.activeProfileId;
+
+      await startSearch({
+        query: savedSearch.query,
+        prefix: savedSearch.prefix,
+      });
+      setSavedSearchMessage(
+        scopeMismatch
+          ? 'Saved search connection scope differs from the active connection. Search ran on the active connection.'
+          : 'Saved search recalled.',
+      );
+    } catch (error) {
+      setSavedSearchMessage(resolveErrorMessage(error, 'Failed to recall saved search.'));
+    } finally {
+      setSavedSearchPending(false);
+    }
+  };
+
+  const refreshRecentKeys = async () => {
+    if (!recentKeysApi?.list || !canSearch) {
+      return;
+    }
+    const response = await recentKeysApi.list({});
+    if ('error' in response) {
+      setRecentKeysMessage(response.error.message);
+      return;
+    }
+    setRecentKeys(response.data);
+  };
+
+  const reopenRecentKey = async (key: string) => {
+    if (!recentKeysApi?.reopen) {
+      return;
+    }
+    if (!canSearch) {
+      setRecentKeysMessage('Connect an active Redis profile before reopening recent keys.');
+      return;
+    }
+    setRecentKeysPending(true);
+    setRecentKeysMessage(null);
+    try {
+      const response = await recentKeysApi.reopen({ key });
+      if ('error' in response) {
+        setRecentKeysMessage(response.error.message);
+        return;
+      }
+      setRecentKeysMessage('Recent key reopened.');
+      await refreshRecentKeys();
+      void startInspect(
+        response.data.key,
+        'redacted',
+        decodePipelineToViewMode(preferredDecodePipelineId),
+        preferredDecodePipelineId,
+      );
+    } catch (error) {
+      setRecentKeysMessage(resolveErrorMessage(error, 'Failed to reopen recent key.'));
+    } finally {
+      setRecentKeysPending(false);
+    }
   };
 
   const startInspect = async (
@@ -628,13 +909,16 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     }
   };
 
-  const copyInspectedValue = async (copyMode: 'safeRedacted' | 'explicitRevealed') => {
+  const copyInspectedValue = async (
+    copyMode: 'safeRedacted' | 'explicitRevealed' | 'prettySnippet',
+  ) => {
     if (!inspectResult || !redisInspectApi?.copy) {
       return;
     }
     const response = await redisInspectApi.copy({
       result: inspectResult,
       copyMode,
+      environmentLabel: connectionStatus.environmentLabel,
     });
     if ('error' in response) {
       setCopyMessage(response.error.message);
@@ -644,8 +928,33 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     setCopyMessage(
       response.data.modeUsed === 'safeRedacted'
         ? 'Copied safe-redacted value to clipboard.'
-        : 'Copied revealed value to clipboard.',
+        : response.data.modeUsed === 'prettySnippet'
+          ? 'Copied safe pretty snippet to clipboard.'
+          : 'Copied revealed value to clipboard.',
     );
+  };
+
+  const exportMarkdownBundle = async () => {
+    if (!inspectResult || !exportsApi?.createMarkdown) {
+      return;
+    }
+    setExportPending(true);
+    setExportMessage(null);
+    try {
+      const response = await exportsApi.createMarkdown({
+        result: inspectResult,
+        environmentLabel: connectionStatus.environmentLabel,
+      });
+      if ('error' in response) {
+        setExportMessage(response.error.message);
+        return;
+      }
+      setExportMessage(`Markdown bundle exported to ${response.data.filePath}.`);
+    } catch (error) {
+      setExportMessage(resolveErrorMessage(error, 'Failed to export markdown bundle.'));
+    } finally {
+      setExportPending(false);
+    }
   };
 
   const fetchMemcachedByKey = async () => {
@@ -779,7 +1088,7 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
         </p>
       ) : (
         <>
-          <div className='grid gap-3 md:grid-cols-[1.6fr_1fr_auto_auto] md:items-end'>
+          <div className='grid gap-3 md:grid-cols-[1.4fr_1fr_auto_auto_auto] md:items-end'>
             <div className='grid gap-2'>
               <Label htmlFor='redis-key-search'>Search substring or pattern</Label>
               <Input
@@ -818,6 +1127,15 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
             >
               Cancel
             </Button>
+            <Button
+              variant='secondary'
+              onClick={() => {
+                void saveCurrentSearch();
+              }}
+              disabled={!savedSearchesApiAvailable || savedSearchPending}
+            >
+              Save search
+            </Button>
           </div>
 
           <div className='flex flex-wrap items-center gap-2 text-xs text-muted-foreground'>
@@ -828,6 +1146,111 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
             </span>
             <span>Scanned: {scannedCount}</span>
             <span>Emitted: {emittedCount}</span>
+          </div>
+          {savedSearchMessage ? (
+            <p className='text-xs text-muted-foreground'>{savedSearchMessage}</p>
+          ) : null}
+
+          <div className='rounded-md border border-border p-3 text-sm'>
+            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-xs uppercase tracking-[0.12em] text-muted-foreground'>
+                Saved searches
+              </p>
+              {!savedSearchesApiAvailable ? (
+                <span className='text-xs text-muted-foreground'>Saved-searches API unavailable.</span>
+              ) : null}
+            </div>
+            <div className='max-h-44 overflow-auto' data-testid='saved-searches-list'>
+              {savedSearches.length > 0 ? (
+                <ul className='space-y-1'>
+                  {savedSearches.map((savedSearch) => (
+                    <li
+                      key={savedSearch.id}
+                      className='flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 bg-muted/40 px-2 py-1'
+                    >
+                      <div className='flex min-w-0 flex-col gap-1'>
+                        <span className='truncate text-xs font-medium'>{savedSearch.query}</span>
+                        <span className='text-xs text-muted-foreground'>
+                          {resolveSavedSearchScopeLabel(savedSearch)}
+                        </span>
+                      </div>
+                      <div className='flex items-center gap-2'>
+                        <Button
+                          size='sm'
+                          variant='outline'
+                          onClick={() => {
+                            void recallSavedSearch(savedSearch.id);
+                          }}
+                          disabled={!savedSearchesApiAvailable || savedSearchPending || !canSearch}
+                        >
+                          Use saved search
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='ghost'
+                          onClick={() => {
+                            void deleteSavedSearch(savedSearch.id);
+                          }}
+                          disabled={!savedSearchesApiAvailable || savedSearchPending}
+                        >
+                          Delete saved
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className='text-xs text-muted-foreground'>No saved searches yet.</p>
+              )}
+            </div>
+          </div>
+          <div className='rounded-md border border-border p-3 text-sm'>
+            <div className='mb-2 flex flex-wrap items-center justify-between gap-2'>
+              <p className='text-xs uppercase tracking-[0.12em] text-muted-foreground'>
+                Recents
+              </p>
+              {!recentKeysApiAvailable ? (
+                <span className='text-xs text-muted-foreground'>Recents API unavailable.</span>
+              ) : null}
+            </div>
+            {recentKeysMessage ? (
+              <p className='mb-2 text-xs text-muted-foreground'>{recentKeysMessage}</p>
+            ) : null}
+            <div className='max-h-44 overflow-auto' data-testid='recent-keys-list'>
+              {recentKeys.length > 0 ? (
+                <ul className='space-y-1'>
+                  {recentKeys.map((item) => (
+                    <li
+                      key={item.key}
+                      className='flex flex-wrap items-center justify-between gap-2 rounded border border-border/60 bg-muted/40 px-2 py-1'
+                    >
+                      <div className='flex min-w-0 flex-col gap-1'>
+                        <code className='truncate text-xs'>{item.key}</code>
+                        <span className='text-xs text-muted-foreground'>
+                          type: {item.type ?? 'unknown'} · TTL:{' '}
+                          {item.ttlSeconds == null ? 'n/a' : item.ttlSeconds} · inspected:{' '}
+                          {formatRecentInspectedAt(item.inspectedAt)}
+                        </span>
+                      </div>
+                      <Button
+                        size='sm'
+                        variant='outline'
+                        onClick={() => {
+                          void reopenRecentKey(item.key);
+                        }}
+                        disabled={!recentKeysApiAvailable || recentKeysPending || !canSearch}
+                      >
+                        Reopen recent
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className='text-xs text-muted-foreground'>
+                  No recent inspections in this session.
+                </p>
+              )}
+            </div>
           </div>
 
           {prefixOptions.length > 0 ? (
@@ -1030,11 +1453,35 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
                     size='sm'
                     variant='outline'
                     onClick={() => {
+                      void copyInspectedValue('prettySnippet');
+                    }}
+                    disabled={Boolean(inspectJobId) || !redisInspectApi?.copy}
+                  >
+                    Copy pretty snippet
+                  </Button>
+                ) : null}
+                {inspectResult ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => {
                       void copyInspectedValue('safeRedacted');
                     }}
                     disabled={Boolean(inspectJobId) || !redisInspectApi?.copy}
                   >
                     Copy safe
+                  </Button>
+                ) : null}
+                {inspectResult ? (
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => {
+                      void exportMarkdownBundle();
+                    }}
+                    disabled={Boolean(inspectJobId) || exportPending || !exportsApiAvailable}
+                  >
+                    Export Markdown bundle
                   </Button>
                 ) : null}
                 {inspectResult?.reveal?.mode === 'revealed' ? (
@@ -1129,6 +1576,9 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
             ) : null}
             {copyMessage ? (
               <p className='mb-2 text-xs text-emerald-700'>{copyMessage}</p>
+            ) : null}
+            {exportMessage ? (
+              <p className='mb-2 text-xs text-muted-foreground'>{exportMessage}</p>
             ) : null}
             {inspectResult ? (
               <div className='mb-3 grid gap-2 rounded border border-border/70 bg-muted/30 p-3' data-testid='redis-mutation-panel'>

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
       handlers.set(channel, handler);
     }),
     getPersistenceStatus: vi.fn(),
+    getDatabase: vi.fn(() => ({ __db: true })),
     profilesService: {
       list: vi.fn(),
       create: vi.fn(),
@@ -18,6 +19,12 @@ const mocks = vi.hoisted(() => {
       search: vi.fn(),
       setTags: vi.fn(),
       toggleFavorite: vi.fn(),
+    },
+    savedSearchesService: {
+      list: vi.fn(),
+      create: vi.fn(),
+      getById: vi.fn(),
+      delete: vi.fn(),
     },
     profileSecrets: {
       getStorageStatus: vi.fn(),
@@ -97,10 +104,15 @@ vi.mock('electron', () => ({
 
 vi.mock('../domain/persistence/db/connection', () => ({
   getPersistenceStatus: mocks.getPersistenceStatus,
+  getDatabase: mocks.getDatabase,
 }));
 
 vi.mock('../domain/persistence/services/connection-profiles.service', () => ({
   profilesService: mocks.profilesService,
+}));
+
+vi.mock('../domain/persistence/services/saved-searches.service', () => ({
+  savedSearchesService: mocks.savedSearchesService,
 }));
 
 vi.mock('../domain/security/secrets', () => ({

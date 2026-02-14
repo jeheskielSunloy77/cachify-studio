@@ -7,6 +7,7 @@ import {
   connectionsStatusGetChannel,
   connectionsSwitchChannel,
   jobsCancelChannel,
+  exportsMarkdownCreateChannel,
   memcachedGetChannel,
   memcachedSetChannel,
   memcachedStatsGetChannel,
@@ -29,6 +30,8 @@ import {
   type ConnectionsSwitchResponse,
   type JobsCancelRequest,
   type JobsCancelResponse,
+  type ExportsMarkdownCreateRequest,
+  type ExportsMarkdownCreateResponse,
   type MemcachedGetRequest,
   type MemcachedGetResponse,
   type MemcachedSetRequest,
@@ -54,6 +57,10 @@ import {
   profilesSetTagsChannel,
   profilesToggleFavoriteChannel,
   profilesUpdateChannel,
+  savedSearchesCreateChannel,
+  savedSearchesDeleteChannel,
+  savedSearchesGetChannel,
+  savedSearchesListChannel,
   type ProfilesCreateRequest,
   type ProfilesCreateResponse,
   type ProfilesDeleteRequest,
@@ -68,9 +75,19 @@ import {
   type ProfilesToggleFavoriteResponse,
   type ProfilesUpdateRequest,
   type ProfilesUpdateResponse,
+  type SavedSearchesCreateRequest,
+  type SavedSearchesCreateResponse,
+  type SavedSearchesDeleteRequest,
+  type SavedSearchesDeleteResponse,
+  type SavedSearchesGetRequest,
+  type SavedSearchesGetResponse,
+  type SavedSearchesListRequest,
+  type SavedSearchesListResponse,
   redisKeysSearchDoneEventChannel,
   redisKeysSearchProgressEventChannel,
   redisKeysSearchStartChannel,
+  recentKeysListChannel,
+  recentKeysReopenChannel,
   redisHashSetFieldChannel,
   redisKeyDeleteChannel,
   redisInspectDoneEventChannel,
@@ -96,6 +113,10 @@ import {
   type RedisKeysSearchProgressEvent,
   type RedisKeysSearchStartRequest,
   type RedisKeysSearchStartResponse,
+  type RecentKeysListRequest,
+  type RecentKeysListResponse,
+  type RecentKeysReopenRequest,
+  type RecentKeysReopenResponse,
   type RedisListPushRequest,
   type RedisListPushResponse,
   type RedisSetAddRequest,
@@ -120,6 +141,12 @@ export interface RendererApi {
       payload: ProfilesToggleFavoriteRequest,
     ) => Promise<ProfilesToggleFavoriteResponse>;
     setTags: (payload: ProfilesSetTagsRequest) => Promise<ProfilesSetTagsResponse>;
+  };
+  savedSearches?: {
+    list: (payload?: SavedSearchesListRequest) => Promise<SavedSearchesListResponse>;
+    create: (payload: SavedSearchesCreateRequest) => Promise<SavedSearchesCreateResponse>;
+    getById: (payload: SavedSearchesGetRequest) => Promise<SavedSearchesGetResponse>;
+    delete: (payload: SavedSearchesDeleteRequest) => Promise<SavedSearchesDeleteResponse>;
   };
   profileSecrets: {
     storageStatus: (
@@ -149,6 +176,10 @@ export interface RendererApi {
     onSearchProgress: (listener: (event: RedisKeysSearchProgressEvent) => void) => () => void;
     onSearchDone: (listener: (event: RedisKeysSearchDoneEvent) => void) => () => void;
   };
+  recentKeys?: {
+    list: (payload?: RecentKeysListRequest) => Promise<RecentKeysListResponse>;
+    reopen: (payload: RecentKeysReopenRequest) => Promise<RecentKeysReopenResponse>;
+  };
   redisInspect?: {
     start: (payload: RedisInspectStartRequest) => Promise<RedisInspectStartResponse>;
     copy?: (payload: RedisInspectCopyRequest) => Promise<RedisInspectCopyResponse>;
@@ -172,6 +203,11 @@ export interface RendererApi {
   jobs?: {
     cancel: (payload: JobsCancelRequest) => Promise<JobsCancelResponse>;
   };
+  exports?: {
+    createMarkdown: (
+      payload: ExportsMarkdownCreateRequest,
+    ) => Promise<ExportsMarkdownCreateResponse>;
+  };
 }
 
 export const rendererApi: RendererApi = {
@@ -186,6 +222,12 @@ export const rendererApi: RendererApi = {
     toggleFavorite: async (payload) =>
       ipcRenderer.invoke(profilesToggleFavoriteChannel, payload),
     setTags: async (payload) => ipcRenderer.invoke(profilesSetTagsChannel, payload),
+  },
+  savedSearches: {
+    list: async (payload = {}) => ipcRenderer.invoke(savedSearchesListChannel, payload),
+    create: async (payload) => ipcRenderer.invoke(savedSearchesCreateChannel, payload),
+    getById: async (payload) => ipcRenderer.invoke(savedSearchesGetChannel, payload),
+    delete: async (payload) => ipcRenderer.invoke(savedSearchesDeleteChannel, payload),
   },
   profileSecrets: {
     storageStatus: async (payload = {}) =>
@@ -231,6 +273,10 @@ export const rendererApi: RendererApi = {
       };
     },
   },
+  recentKeys: {
+    list: async (payload = {}) => ipcRenderer.invoke(recentKeysListChannel, payload),
+    reopen: async (payload) => ipcRenderer.invoke(recentKeysReopenChannel, payload),
+  },
   redisInspect: {
     start: async (payload) => ipcRenderer.invoke(redisInspectStartChannel, payload),
     copy: async (payload) => ipcRenderer.invoke(redisInspectCopyChannel, payload),
@@ -265,5 +311,8 @@ export const rendererApi: RendererApi = {
   },
   jobs: {
     cancel: async (payload) => ipcRenderer.invoke(jobsCancelChannel, payload),
+  },
+  exports: {
+    createMarkdown: async (payload) => ipcRenderer.invoke(exportsMarkdownCreateChannel, payload),
   },
 };
