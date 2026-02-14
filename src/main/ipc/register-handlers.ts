@@ -71,6 +71,12 @@ import {
 	profilesUpdateChannel,
 	profilesUpdateRequestSchema,
 	profilesUpdateResponseSchema,
+	preferencesGetChannel,
+	preferencesGetRequestSchema,
+	preferencesGetResponseSchema,
+	preferencesUpdateChannel,
+	preferencesUpdateRequestSchema,
+	preferencesUpdateResponseSchema,
 	savedSearchesCreateChannel,
 	savedSearchesCreateRequestSchema,
 	savedSearchesCreateResponseSchema,
@@ -150,6 +156,8 @@ import {
 	type ProfilesSetTagsResponse,
 	type ProfilesToggleFavoriteResponse,
 	type ProfilesUpdateResponse,
+	type PreferencesGetResponse,
+	type PreferencesUpdateResponse,
 	type RecentKeysListResponse,
 	type RecentKeysReopenResponse,
 	type SavedSearchesCreateResponse,
@@ -183,6 +191,7 @@ import { createMarkdownBundle } from '../domain/exports/markdown-bundle.service'
 import { getDatabase, getPersistenceStatus } from '../domain/persistence/db/connection'
 import { createExportArtifact } from '../domain/persistence/repositories/exports-index.repository'
 import { profilesService } from '../domain/persistence/services/connection-profiles.service'
+import { preferencesService } from '../domain/persistence/services/preferences.service'
 import { savedSearchesService } from '../domain/persistence/services/saved-searches.service'
 import { profileSecrets } from '../domain/security/secrets'
 
@@ -704,6 +713,80 @@ const handleSavedSearchesDelete = async (
 		)
 	} catch (error) {
 		return queryFailureEnvelope('savedSearches:delete failed', error) as SavedSearchesDeleteResponse
+	}
+}
+
+const handlePreferencesGet = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<PreferencesGetResponse> => {
+	const parsed = preferencesGetRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for preferences:get',
+			parsed.error.flatten(),
+		) as PreferencesGetResponse
+	}
+
+	try {
+		return ensureResponseEnvelope(
+			preferencesGetResponseSchema,
+			{
+				ok: true,
+				data: preferencesService.get(),
+			},
+			'Invalid preferences:get response envelope',
+		)
+	} catch (error) {
+		const diagnosticId = buildDiagnosticId()
+		console.error(`[ipc:${diagnosticId}] preferences:get failed`, normalizeDetails(error))
+		return errorEnvelope(
+			'PREFERENCES_READ_FAILED',
+			'Preferences are temporarily unavailable.',
+			{ diagnosticId },
+		) as PreferencesGetResponse
+	}
+}
+
+const handlePreferencesUpdate = async (
+	_event: IpcMainInvokeEvent,
+	payload: unknown,
+): Promise<PreferencesUpdateResponse> => {
+	const parsed = preferencesUpdateRequestSchema.safeParse(payload ?? {})
+	if (!parsed.success) {
+		return errorEnvelope(
+			'VALIDATION_ERROR',
+			'Invalid payload for preferences:update',
+			parsed.error.flatten(),
+		) as PreferencesUpdateResponse
+	}
+
+	try {
+		const updated = preferencesService.update(parsed.data.preferences)
+		if (!updated.ok) {
+			return errorEnvelope(
+				'VALIDATION_ERROR',
+				'Invalid preferences payload',
+				updated.error.flatten(),
+			) as PreferencesUpdateResponse
+		}
+		return ensureResponseEnvelope(
+			preferencesUpdateResponseSchema,
+			{
+				ok: true,
+				data: updated.data,
+			},
+			'Invalid preferences:update response envelope',
+		)
+	} catch (error) {
+		const diagnosticId = buildDiagnosticId()
+		console.error(`[ipc:${diagnosticId}] preferences:update failed`, normalizeDetails(error))
+		return errorEnvelope(
+			'PREFERENCES_WRITE_FAILED',
+			'Could not save preferences locally.',
+			{ diagnosticId },
+		) as PreferencesUpdateResponse
 	}
 }
 
@@ -1661,6 +1744,8 @@ export const registerIpcHandlers = () => {
 	ipcMain.handle(savedSearchesCreateChannel, handleSavedSearchesCreate)
 	ipcMain.handle(savedSearchesGetChannel, handleSavedSearchesGet)
 	ipcMain.handle(savedSearchesDeleteChannel, handleSavedSearchesDelete)
+	ipcMain.handle(preferencesGetChannel, handlePreferencesGet)
+	ipcMain.handle(preferencesUpdateChannel, handlePreferencesUpdate)
 	ipcMain.handle(profileSecretsStorageStatusChannel, handleProfileSecretsStorageStatus)
 	ipcMain.handle(profileSecretsSaveChannel, handleProfileSecretsSave)
 	ipcMain.handle(profileSecretsLoadChannel, handleProfileSecretsLoad)

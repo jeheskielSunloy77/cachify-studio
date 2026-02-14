@@ -1410,9 +1410,29 @@ describe('Redis explorer panel', () => {
       }),
     );
 
-    window.localStorage.setItem('cachify.decodePipelinePreference', 'json-pretty');
-
     (window as typeof window & { api: RendererApi }).api = buildApi({
+      preferences: {
+        get: vi.fn(async () =>
+          ok({
+            version: 1 as const,
+            explorer: { decodePipelineId: 'json-pretty' as const },
+            desktop: {
+              globalShortcutAccelerator: 'CommandOrControl+Shift+K',
+              density: 'comfortable' as const,
+            },
+          }),
+        ),
+        update: vi.fn(async () =>
+          ok({
+            version: 1 as const,
+            explorer: { decodePipelineId: 'json-pretty' as const },
+            desktop: {
+              globalShortcutAccelerator: 'CommandOrControl+Shift+K',
+              density: 'comfortable' as const,
+            },
+          }),
+        ),
+      },
       redisKeys: {
         startSearch: async () =>
           ok({
@@ -1452,6 +1472,32 @@ describe('Redis explorer panel', () => {
       revealMode: 'redacted',
       viewMode: 'formatted',
       decodePipelineId: 'json-pretty',
+    });
+  });
+
+  it('focuses redis search input when focus-search event is emitted', async () => {
+    let triggerFocusSearch: ((event: { requestedAt: string; source: 'global-shortcut' }) => void) | null =
+      null;
+
+    (window as typeof window & { api: RendererApi }).api = buildApi({
+      focusSearch: {
+        onRequested: (listener) => {
+          triggerFocusSearch = listener;
+          return () => undefined;
+        },
+      },
+    });
+
+    render(<App />);
+    const searchInput = await screen.findByLabelText('Search substring or pattern');
+
+    expect(searchInput).not.toHaveFocus();
+    triggerFocusSearch?.({
+      requestedAt: new Date().toISOString(),
+      source: 'global-shortcut',
+    });
+    await waitFor(() => {
+      expect(searchInput).toHaveFocus();
     });
   });
 

@@ -18,6 +18,10 @@ import {
   savedSearchCreateInputSchema,
   savedSearchSchema,
 } from '../explorer/saved-searches.schemas';
+import {
+  preferencesSchema,
+  preferencesUpdateSchema,
+} from '../preferences/preferences.schemas';
 
 export const ipcErrorSchema = z.object({
   code: z.string().min(1),
@@ -69,6 +73,8 @@ export const savedSearchesListChannel = 'savedSearches:list' as const;
 export const savedSearchesCreateChannel = 'savedSearches:create' as const;
 export const savedSearchesGetChannel = 'savedSearches:get' as const;
 export const savedSearchesDeleteChannel = 'savedSearches:delete' as const;
+export const preferencesGetChannel = 'preferences:get' as const;
+export const preferencesUpdateChannel = 'preferences:update' as const;
 export const profileSecretsStorageStatusChannel = 'profileSecrets:storageStatus' as const;
 export const profileSecretsSaveChannel = 'profileSecrets:save' as const;
 export const profileSecretsLoadChannel = 'profileSecrets:load' as const;
@@ -86,6 +92,7 @@ export const recentKeysReopenChannel = 'recentKeys:reopen' as const;
 export const jobsCancelChannel = 'jobs:cancel' as const;
 export const redisKeysSearchProgressEventChannel = 'redisKeys:search:progress' as const;
 export const redisKeysSearchDoneEventChannel = 'redisKeys:search:done' as const;
+export const explorerFocusSearchEventChannel = 'explorer:focusSearch' as const;
 export const redisInspectStartChannel = 'redisInspect:start' as const;
 export const redisInspectProgressEventChannel = 'redisInspect:progress' as const;
 export const redisInspectDoneEventChannel = 'redisInspect:done' as const;
@@ -188,6 +195,22 @@ export const savedSearchesDeleteResponseSchema = z.union([
       })
       .strict(),
   ),
+  errorEnvelopeSchema,
+]);
+
+export const preferencesGetRequestSchema = z.object({}).strict();
+export const preferencesGetResponseSchema = z.union([
+  okEnvelopeSchema(preferencesSchema),
+  errorEnvelopeSchema,
+]);
+
+export const preferencesUpdateRequestSchema = z
+  .object({
+    preferences: preferencesUpdateSchema,
+  })
+  .strict();
+export const preferencesUpdateResponseSchema = z.union([
+  okEnvelopeSchema(preferencesSchema),
   errorEnvelopeSchema,
 ]);
 
@@ -460,6 +483,13 @@ export const redisKeysSearchDoneEventSchema = z
     elapsedMs: z.number().int().nonnegative(),
     continuation: redisKeySearchContinuationSchema.optional(),
     error: ipcErrorSchema.optional(),
+  })
+  .strict();
+
+export const explorerFocusSearchEventSchema = z
+  .object({
+    requestedAt: z.string(),
+    source: z.literal('global-shortcut'),
   })
   .strict();
 
@@ -1098,6 +1128,18 @@ export const ipcContract = {
     responseSchema: savedSearchesDeleteResponseSchema,
     description: 'Delete a saved explorer search by id.',
   },
+  preferencesGet: {
+    channel: preferencesGetChannel,
+    requestSchema: preferencesGetRequestSchema,
+    responseSchema: preferencesGetResponseSchema,
+    description: 'Get user preferences persisted in main process local storage.',
+  },
+  preferencesUpdate: {
+    channel: preferencesUpdateChannel,
+    requestSchema: preferencesUpdateRequestSchema,
+    responseSchema: preferencesUpdateResponseSchema,
+    description: 'Patch user preferences persisted in main process local storage.',
+  },
   profileSecretsStorageStatus: {
     channel: profileSecretsStorageStatusChannel,
     requestSchema: profileSecretsStorageStatusRequestSchema,
@@ -1287,6 +1329,10 @@ export type SavedSearchesGetRequest = z.infer<typeof savedSearchesGetRequestSche
 export type SavedSearchesGetResponse = z.infer<typeof savedSearchesGetResponseSchema>;
 export type SavedSearchesDeleteRequest = z.infer<typeof savedSearchesDeleteRequestSchema>;
 export type SavedSearchesDeleteResponse = z.infer<typeof savedSearchesDeleteResponseSchema>;
+export type PreferencesGetRequest = z.infer<typeof preferencesGetRequestSchema>;
+export type PreferencesGetResponse = z.infer<typeof preferencesGetResponseSchema>;
+export type PreferencesUpdateRequest = z.infer<typeof preferencesUpdateRequestSchema>;
+export type PreferencesUpdateResponse = z.infer<typeof preferencesUpdateResponseSchema>;
 export type ProfileSecretsStorageStatusRequest = z.infer<
   typeof profileSecretsStorageStatusRequestSchema
 >;
@@ -1327,6 +1373,7 @@ export type JobsCancelRequest = z.infer<typeof jobsCancelRequestSchema>;
 export type JobsCancelResponse = z.infer<typeof jobsCancelResponseSchema>;
 export type RedisKeysSearchProgressEvent = z.infer<typeof redisKeysSearchProgressEventSchema>;
 export type RedisKeysSearchDoneEvent = z.infer<typeof redisKeysSearchDoneEventSchema>;
+export type ExplorerFocusSearchEvent = z.infer<typeof explorerFocusSearchEventSchema>;
 export type RedisInspectStartRequest = z.infer<typeof redisInspectStartRequestSchema>;
 export type RedisInspectStartResponse = z.infer<typeof redisInspectStartResponseSchema>;
 export type RevealResetTrigger = z.infer<typeof revealResetTriggerSchema>;

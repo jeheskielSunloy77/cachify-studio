@@ -111,21 +111,16 @@ const resolveFormattedUnavailableReason = (reason?: string) => {
   return 'Formatted view is unavailable for this payload.';
 };
 
-const DECODE_PIPELINE_PREFERENCE_KEY = 'cachify.decodePipelinePreference';
 const DEFAULT_DECODE_PIPELINE: InspectorDecodePipelineId = 'raw-text';
 const JSON_PRETTY_PIPELINE: InspectorDecodePipelineId = 'json-pretty';
 
 const decodePipelineToViewMode = (pipelineId: InspectorDecodePipelineId): 'raw' | 'formatted' =>
   pipelineId === JSON_PRETTY_PIPELINE ? 'formatted' : 'raw';
 
-const readDecodePipelinePreference = (): InspectorDecodePipelineId => {
-  try {
-    const value = window.localStorage.getItem(DECODE_PIPELINE_PREFERENCE_KEY);
-    return value === JSON_PRETTY_PIPELINE ? JSON_PRETTY_PIPELINE : DEFAULT_DECODE_PIPELINE;
-  } catch {
-    return DEFAULT_DECODE_PIPELINE;
-  }
-};
+const normalizeDecodePreference = (
+  value: string | undefined,
+): InspectorDecodePipelineId =>
+  value === JSON_PRETTY_PIPELINE ? JSON_PRETTY_PIPELINE : DEFAULT_DECODE_PIPELINE;
 
 const parseStreamEntries = (value: string) => {
   const lines = value
@@ -239,8 +234,9 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const [exportPending, setExportPending] = useState(false);
   const [copyConfirmRevealed, setCopyConfirmRevealed] = useState(false);
   const [preferredDecodePipelineId, setPreferredDecodePipelineId] = useState<InspectorDecodePipelineId>(
-    () => readDecodePipelinePreference(),
+    DEFAULT_DECODE_PIPELINE,
   );
+  const [decodePreferencesLoaded, setDecodePreferencesLoaded] = useState(false);
   const [revealConfirmPending, setRevealConfirmPending] = useState(false);
   const stringPreviewRef = useRef<HTMLPreElement | null>(null);
   const inspectJobIdRef = useRef<string | null>(null);
@@ -284,6 +280,8 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const redisMutationsApi = api.redisMutations;
   const memcachedApi = api.memcached;
   const exportsApi = api.exports;
+  const preferencesApi = api.preferences;
+  const focusSearchApi = api.focusSearch;
   const savedSearchesApi = api.savedSearches;
   const recentKeysApi = api.recentKeys;
   const jobsApi = api.jobs;
@@ -318,6 +316,75 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
   const recentKeysApiAvailable =
     Boolean(recentKeysApi?.list) &&
     Boolean(recentKeysApi?.reopen);
+
+  useEffect(() => {
+    if (!preferencesApi?.get) {
+      setDecodePreferencesLoaded(true);
+      return;
+    }
+
+    let active = true;
+    void preferencesApi
+      .get({})
+      .then((response) => {
+        if (!active || 'error' in response) {
+          return;
+        }
+        setPreferredDecodePipelineId(
+          normalizeDecodePreference(response.data.explorer.decodePipelineId),
+        );
+      })
+      .catch(() => {
+        // Preference hydration failures fall back to in-memory defaults.
+      })
+      .finally(() => {
+        if (active) {
+          setDecodePreferencesLoaded(true);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [preferencesApi]);
+
+  useEffect(() => {
+    if (!decodePreferencesLoaded || !preferencesApi?.update) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      void preferencesApi.update({
+        preferences: {
+          explorer: {
+            decodePipelineId: preferredDecodePipelineId,
+          },
+        },
+      });
+    }, 200);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [decodePreferencesLoaded, preferencesApi, preferredDecodePipelineId]);
+
+  useEffect(() => {
+    if (!focusSearchApi?.onRequested) {
+      return;
+    }
+
+    const unsubscribe = focusSearchApi.onRequested(() => {
+      const searchInput = document.getElementById('redis-key-search');
+      if (!(searchInput instanceof HTMLInputElement)) {
+        return;
+      }
+      searchInput.focus();
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [focusSearchApi]);
 
   useEffect(() => {
     if (!explorerApiAvailable || !redisKeysApi?.onSearchProgress || !redisKeysApi?.onSearchDone) {
@@ -470,14 +537,6 @@ export const RedisExplorerPanel = ({ connectionStatus }: RedisExplorerPanelProps
     }
     preview.scrollTop = stringPreviewScrollByMode.current[inspectResult.view.activeMode];
   }, [inspectResult?.type, stringPreviewValue, inspectResult?.view]);
-
-  useEffect(() => {
-    try {
-      window.localStorage.setItem(DECODE_PIPELINE_PREFERENCE_KEY, preferredDecodePipelineId);
-    } catch {
-      // Ignore preference persistence errors in constrained renderer environments.
-    }
-  }, [preferredDecodePipelineId]);
 
   useEffect(() => {
     if (!inspectorApiAvailable || !redisInspectApi?.onProgress || !redisInspectApi?.onDone) {

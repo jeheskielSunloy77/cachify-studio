@@ -6,6 +6,7 @@ import {
   connectionsStatusChangedEventChannel,
   connectionsStatusGetChannel,
   connectionsSwitchChannel,
+  explorerFocusSearchEventChannel,
   jobsCancelChannel,
   exportsMarkdownCreateChannel,
   memcachedGetChannel,
@@ -57,6 +58,8 @@ import {
   profilesSetTagsChannel,
   profilesToggleFavoriteChannel,
   profilesUpdateChannel,
+  preferencesGetChannel,
+  preferencesUpdateChannel,
   savedSearchesCreateChannel,
   savedSearchesDeleteChannel,
   savedSearchesGetChannel,
@@ -75,6 +78,11 @@ import {
   type ProfilesToggleFavoriteResponse,
   type ProfilesUpdateRequest,
   type ProfilesUpdateResponse,
+  type ExplorerFocusSearchEvent,
+  type PreferencesGetRequest,
+  type PreferencesGetResponse,
+  type PreferencesUpdateRequest,
+  type PreferencesUpdateResponse,
   type SavedSearchesCreateRequest,
   type SavedSearchesCreateResponse,
   type SavedSearchesDeleteRequest,
@@ -147,6 +155,13 @@ export interface RendererApi {
     create: (payload: SavedSearchesCreateRequest) => Promise<SavedSearchesCreateResponse>;
     getById: (payload: SavedSearchesGetRequest) => Promise<SavedSearchesGetResponse>;
     delete: (payload: SavedSearchesDeleteRequest) => Promise<SavedSearchesDeleteResponse>;
+  };
+  preferences?: {
+    get: (payload?: PreferencesGetRequest) => Promise<PreferencesGetResponse>;
+    update: (payload: PreferencesUpdateRequest) => Promise<PreferencesUpdateResponse>;
+  };
+  focusSearch?: {
+    onRequested: (listener: (event: ExplorerFocusSearchEvent) => void) => () => void;
   };
   profileSecrets: {
     storageStatus: (
@@ -228,6 +243,19 @@ export const rendererApi: RendererApi = {
     create: async (payload) => ipcRenderer.invoke(savedSearchesCreateChannel, payload),
     getById: async (payload) => ipcRenderer.invoke(savedSearchesGetChannel, payload),
     delete: async (payload) => ipcRenderer.invoke(savedSearchesDeleteChannel, payload),
+  },
+  preferences: {
+    get: async (payload = {}) => ipcRenderer.invoke(preferencesGetChannel, payload),
+    update: async (payload) => ipcRenderer.invoke(preferencesUpdateChannel, payload),
+  },
+  focusSearch: {
+    onRequested: (listener) => {
+      const wrapped = (_event: unknown, payload: ExplorerFocusSearchEvent) => listener(payload);
+      ipcRenderer.on(explorerFocusSearchEventChannel, wrapped);
+      return () => {
+        ipcRenderer.removeListener(explorerFocusSearchEventChannel, wrapped);
+      };
+    },
   },
   profileSecrets: {
     storageStatus: async (payload = {}) =>
