@@ -80,10 +80,10 @@ development_status:
   5-4-copy-pretty-snippet-for-sharing-safe-context: done
   epic-5-retrospective: optional
   epic-6: in-progress
-  6-1-tray-menu-quick-actions-with-safety-indicator: ready-for-dev
-  6-2-global-shortcut-to-focus-search: backlog
-  6-3-local-preferences-storage: backlog
-  6-4-do-not-persist-fetched-cache-values-by-default: backlog
+  6-1-tray-menu-quick-actions-with-safety-indicator: review
+  6-2-global-shortcut-to-focus-search: review
+  6-3-local-preferences-storage: review
+  6-4-do-not-persist-fetched-cache-values-by-default: review
   epic-6-retrospective: optional
   epic-7: backlog
   7-1-check-for-available-updates-and-notify-user: backlog

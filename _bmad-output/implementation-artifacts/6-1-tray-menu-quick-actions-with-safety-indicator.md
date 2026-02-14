@@ -1,6 +1,6 @@
 # Story 6.1: Tray Menu Quick Actions with Safety Indicator
 
-Status: ready-for-dev
+Status: review
 
 Generated: 2026-02-13
 Story Key: `6-1-tray-menu-quick-actions-with-safety-indicator`
@@ -21,24 +21,24 @@ so that I can quickly re-enter context and avoid mistakes.
 
 ## Tasks / Subtasks
 
-- [ ] Add main-process tray lifecycle management (AC: 1)
-  - [ ] Create tray instance after `app.whenReady()` and hold a single instance for app lifetime.
-  - [ ] Build menu entries for: open app, recent connections, and quit.
-  - [ ] Ensure tray menu state is rebuilt when connection status changes.
-- [ ] Add safety indicator content in tray (AC: 1)
-  - [ ] Surface `environmentLabel` and `safetyMode` from session state in tray label/menu text.
-  - [ ] Include text + icon/marker semantics (not color-only messaging).
-  - [ ] Show safe fallback when no active connection exists.
-- [ ] Add recent-connections provider for tray menu (AC: 1)
-  - [ ] Reuse existing profile persistence layer to derive recent entries (stable ordering + max count).
-  - [ ] Selecting a recent connection should focus/open window and initiate switch/connect flow safely.
-- [ ] Wire lifecycle integration and cleanup (AC: 1)
-  - [ ] Integrate tray setup into startup path without breaking existing lifecycle and IPC initialization.
-  - [ ] Clean up global listeners on app exit/reload paths where needed.
-- [ ] Add tests for tray behavior (AC: 1)
-  - [ ] Main tests cover tray menu construction for disconnected, read-only, and unlocked states.
-  - [ ] Main tests cover recent connection item actions and safe fallback labels.
-  - [ ] Main tests verify no duplicate tray instances and menu refresh behavior.
+- [x] Add main-process tray lifecycle management (AC: 1)
+  - [x] Create tray instance after `app.whenReady()` and hold a single instance for app lifetime.
+  - [x] Build menu entries for: open app, recent connections, and quit.
+  - [x] Ensure tray menu state is rebuilt when connection status changes.
+- [x] Add safety indicator content in tray (AC: 1)
+  - [x] Surface `environmentLabel` and `safetyMode` from session state in tray label/menu text.
+  - [x] Include text + icon/marker semantics (not color-only messaging).
+  - [x] Show safe fallback when no active connection exists.
+- [x] Add recent-connections provider for tray menu (AC: 1)
+  - [x] Reuse existing profile persistence layer to derive recent entries (stable ordering + max count).
+  - [x] Selecting a recent connection should focus/open window and initiate switch/connect flow safely.
+- [x] Wire lifecycle integration and cleanup (AC: 1)
+  - [x] Integrate tray setup into startup path without breaking existing lifecycle and IPC initialization.
+  - [x] Clean up global listeners on app exit/reload paths where needed.
+- [x] Add tests for tray behavior (AC: 1)
+  - [x] Main tests cover tray menu construction for disconnected, read-only, and unlocked states.
+  - [x] Main tests cover recent connection item actions and safe fallback labels.
+  - [x] Main tests verify no duplicate tray instances and menu refresh behavior.
 
 ## Dev Notes
 
@@ -171,17 +171,28 @@ GPT-5 (Codex)
 
 ### Debug Log References
 
-- YOLO mode active for create-story workflow after user confirmation.
-- Exhaustive artifact analysis completed across epics, PRD, architecture, UX, codebase, and package metadata.
-- Story document generated section-by-section with checkpoint saves.
+- Implemented `src/main/app/tray.ts` with single-instance lifecycle, status-driven menu refresh, safety indicator text markers, and recent-connection actions.
+- Integrated tray bootstrap/cleanup into `src/main/app/lifecycle.ts` and reused window focus/create behavior via `src/main/app/create-main-window.ts`.
+- Added tray + lifecycle coverage in `src/main/test/tray.test.ts` and `src/main/test/lifecycle.desktop-integrations.test.ts`.
+- Full validation passed on 2026-02-14: `npm run lint && npm run typecheck && npm test`.
 
 ### Completion Notes List
 
-- Selected first backlog story from sprint status: `6-1-tray-menu-quick-actions-with-safety-indicator`.
-- Transitioned `epic-6` to `in-progress` as this is the first story in Epic 6.
-- Generated implementation-ready story guidance focused on tray lifecycle, safety-state fidelity, and regression-safe integration.
+- Added tray menu entries for `Open app`, `Recent connections`, and `Quit`, with deterministic rebuilds and no duplicate tray instances.
+- Added safety indicator semantics with explicit text markers (`[SAFE]` / `[UNLOCKED]`), environment label, and disconnected fallback copy.
+- Recent connections are sourced from persisted profile metadata (`profilesService.list()` ordering) and capped to 5 entries.
+- Selecting a recent connection opens/focuses the app and executes safe connect/switch flow through `connectionSessionService`.
 
 ### File List
 
 - `_bmad-output/implementation-artifacts/6-1-tray-menu-quick-actions-with-safety-indicator.md`
 - `_bmad-output/implementation-artifacts/sprint-status.yaml`
+- `src/main/app/tray.ts`
+- `src/main/app/lifecycle.ts`
+- `src/main/app/create-main-window.ts`
+- `src/main/test/tray.test.ts`
+- `src/main/test/lifecycle.desktop-integrations.test.ts`
+
+## Change Log
+
+- 2026-02-14: Implemented tray lifecycle, safety indicator, and recent-connection quick actions with full test coverage; moved story status to `review`.
