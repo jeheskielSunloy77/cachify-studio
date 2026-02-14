@@ -58,4 +58,21 @@ describe('recent keys session service', () => {
     expect(profileB).toHaveLength(1);
     expect(profileB[0]?.key).toBe('only:key');
   });
+
+  it('stores metadata only and ignores accidental fetched-value fields', async () => {
+    recentKeysSessionService.record(
+      'profile-a',
+      {
+        key: 'orders:secure',
+        type: 'string',
+        ttlSeconds: 30,
+        inspectedAt: '2026-02-14T11:00:00.000Z',
+        value: 'secret-should-not-persist',
+      } as unknown as Parameters<typeof recentKeysSessionService.record>[1],
+    );
+
+    const [entry] = recentKeysSessionService.list('profile-a');
+    expect(entry?.key).toBe('orders:secure');
+    expect((entry as unknown as { value?: string })?.value).toBeUndefined();
+  });
 });

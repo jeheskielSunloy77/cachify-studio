@@ -38,4 +38,41 @@ describe('exports index repository', () => {
 
     sqlite.close();
   });
+
+  it('rejects attempts to persist fetched value bodies in export metadata index', async () => {
+    const { db, sqlite } = createTestDatabase();
+
+    expect(() =>
+      createExportArtifact(db, {
+        id: '33333333-3333-4333-8333-333333333333',
+        filePath: '/tmp/export-secret.md',
+        createdAt: '2026-02-14T10:00:00.000Z',
+        profileId: null,
+        key: 'orders:secret',
+        redactionPolicy: 'safe-default-redaction',
+        redactionPolicyVersion: '1.0.0',
+        previewMode: 'safeRedacted',
+        value: 'super-secret-token',
+      } as unknown as Parameters<typeof createExportArtifact>[1]),
+    ).toThrowError(/EXPORT_VALUE_PERSISTENCE_BLOCKED/);
+
+    sqlite.close();
+  });
+
+  it('keeps export_artifacts schema metadata-only with no raw value columns', async () => {
+    const { sqlite } = createTestDatabase();
+
+    const columns = sqlite
+      .prepare('PRAGMA table_info(export_artifacts)')
+      .all() as Array<{ name: string }>;
+    const columnNames = columns.map((column) => column.name);
+
+    expect(columnNames).not.toContain('value');
+    expect(columnNames).not.toContain('value_preview');
+    expect(columnNames).not.toContain('payload');
+    expect(columnNames).toContain('file_path');
+    expect(columnNames).toContain('redis_key');
+
+    sqlite.close();
+  });
 });

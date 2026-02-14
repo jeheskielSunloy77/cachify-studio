@@ -256,5 +256,16 @@ describe('registerIpcHandlers exports markdown channel', () => {
       expect(parsed.data.data.filePath).toBe('/tmp/cachify-export.md');
       expect(parsed.data.data.previewMode).toBe('safeRedacted');
     }
+    expect(mocks.createExportArtifact).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        filePath: '/tmp/cachify-export.md',
+        key: 'missing:key',
+        previewMode: 'safeRedacted',
+      }),
+    );
+    expect(
+      (mocks.createExportArtifact.mock.calls[0]?.[1] as Record<string, unknown>)?.value,
+    ).toBeUndefined();
   });
 });

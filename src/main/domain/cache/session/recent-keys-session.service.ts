@@ -1,6 +1,7 @@
 import type { RecentRedisKey } from '../../../../shared/explorer/recent-keys.schemas';
 
 const MAX_RECENT_KEYS_PER_CONNECTION = 50;
+// Runtime recents intentionally persist metadata only; fetched values remain transient in memory.
 const recentKeysByConnection = new Map<string, RecentRedisKey[]>();
 
 const trimHistory = (entries: RecentRedisKey[]) => entries.slice(0, MAX_RECENT_KEYS_PER_CONNECTION);
